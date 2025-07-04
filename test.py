@@ -1,6 +1,5 @@
 import os
 import torch
-import torch.version
 
 print(os.environ['CONDA_DEFAULT_ENV'])
 print(torch.__version__)
