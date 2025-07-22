@@ -9,7 +9,7 @@ logger.addHandler(handler)
 logger.setLevel(logging.DEBUG)
 
 
-# logger.debug(os.environ["CONDA_DEFAULT_ENV"])
+logger.debug(os.environ["CONDA_DEFAULT_ENV"])
 logger.info(f"torch version: {torch.__version__}")
 logger.warning(torch.cuda.is_available())
 logger.error(f"cuda version: {torch.version.cuda}")
