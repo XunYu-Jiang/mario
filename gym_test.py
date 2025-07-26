@@ -55,7 +55,7 @@ def downscale_obs(obs: np.ndarray, new_size: Tuple=(240, 256), to_gray: bool=Tru
 
     return gray if to_gray else obs
 
-plt.imshow(env.render())
-plt.show()
-plt.imshow(downscale_obs(env.render()), cmap='gray')
-plt.show()
+# plt.imshow(env.render())
+# plt.show()
+# plt.imshow(downscale_obs(env.render()), cmap='gray')
+# plt.show()
