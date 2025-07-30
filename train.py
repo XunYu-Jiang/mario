@@ -92,6 +92,11 @@ def prepare_multi_state(states_queue: torch.Tensor, new_state: np.ndarray) -> to
 
     return states_queue
 
+def policy (qvalue):
+    """
+    select the action according to the softmaxed qvalue. (why normalized??????)
+    """
+    return torch.multinomial(torch.functional.softmax(torch.functional.normalize(qvalue)), num_samples=1)
 
 if __name__ == "__main__":
     env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='rgb_array')
