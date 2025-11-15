@@ -12,6 +12,7 @@ import torch
 import numpy as np
 from collections import deque
 from typing import Tuple
+import copy
 
 class ExperienceReplay:
     def __init__(self, batch_size=32, buffer_size=100) -> None:
@@ -27,7 +28,7 @@ class ExperienceReplay:
             states (torch.Tensor): last 3 grayscale state observations. (3, 240, 256)
             action (int): last action from actor.
             reward (torch.Tensor): reward from mario env depands on last action.
-            info (): last info from mario env.
+            info (dict): last info from mario env.
         
         Returns:
             None
@@ -37,6 +38,19 @@ class ExperienceReplay:
         else:
             self.replay_buffer.popleft()
             self.replay_buffer.append((states, action, reward, info))
+    
+    def get_last_replay(self) -> Tuple[torch.Tensor, int, float, dict]:
+        """
+        get a copy of last replay from replay buffer.
+
+        Returns:
+            Tuple[torch.Tensor, int, float, dict]: last replay history
+        """
+        if len(self.replay_buffer) < 1:
+            logger.critical("No replay in buffer.")
+            return None
+        
+        return torch.clone(self.replay_buffer[-1][0]).detach(), self.replay_buffer[-1][1], self.replay_buffer[-1][2], copy.deepcopy(self.replay_buffer[-1][3])
     
     def get_batch(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
@@ -72,6 +86,19 @@ if __name__ == "__main__":
                          [4, 5, 6]])
     temp2 = torch.tensor([[7, 8, 9],
                           [10, 11, 12]])
+    logger.debug(dq[-1])
+
     # logger.debug(f"{temp}, {temp.shape}")
     states_batch = torch.stack((temp, temp2), dim=0)
     # logger.debug(f"{states_batch}, {states_batch.shape}")
+    dick = {"a": 1, "b": 2}
+    cock = copy.deepcopy(dick)
+    logger.debug((dick, id(dick)))
+    logger.debug((cock, id(cock)))
+
+    a = (1, 2)
+    b = a[1]
+    b = b + 1
+
+    logger.debug((a, b))
+
