@@ -1,11 +1,7 @@
 # log settings
-import logging, log_setting
+import log_setting
 
-logger = logging.getLogger(__name__)
-handler = logging.StreamHandler()
-handler.setFormatter(log_setting.MyFormatter())
-logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)
+logger = log_setting.MyLogging.get_default_logger()
 
 import torch
 from torch import nn
@@ -13,7 +9,7 @@ from torch.nn import functional
 
 class Q_network(nn.Module):
     def __init__(self) -> None:
-        super(Q_network, self).__init__()
+        super().__init__()
 
         self.conv_block = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, stride=1, padding=1),
