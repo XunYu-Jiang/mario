@@ -1,4 +1,5 @@
 import logging, colorama
+
 class MyFormatter(logging.Formatter):
     colorama.init(autoreset=True)
     
@@ -19,3 +20,17 @@ class MyFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt)
 
         return formatter.format(record)
+
+
+class MyLogging:
+    _logger = logging.getLogger("my_default_logger")
+
+    @classmethod
+    def get_default_logger(cls) -> logging.Logger:
+        handler = logging.StreamHandler()
+        handler.setFormatter(MyFormatter())
+        root_logger = logging.getLogger()
+        root_logger.addHandler(handler)
+        root_logger.setLevel(logging.DEBUG)
+
+        return cls._logger

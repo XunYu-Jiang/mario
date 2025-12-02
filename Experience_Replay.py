@@ -1,11 +1,7 @@
 # log settings
-import logging, log_setting
+import log_setting
 
-logger = logging.getLogger(__name__)
-handler = logging.StreamHandler()
-handler.setFormatter(log_setting.MyFormatter())
-logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)
+logger = log_setting.MyLogSetting.get_default_logger()
 
 from random import shuffle
 import torch

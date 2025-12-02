@@ -1,27 +1,29 @@
 # log settings
 import logging, log_setting
 
-logger = logging.getLogger(__name__)
-handler = logging.StreamHandler()
-handler.setFormatter(log_setting.MyFormatter())
-logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)
+logger = log_setting.MyLogging.get_default_logger()
 
 import numpy as np
 from typing import Tuple
 import torch
 from collections import deque
+import time
+import policy
 
 # import mario libs
 from nes_py.wrappers import JoypadSpace
 import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, COMPLEX_MOVEMENT
+import gymnasium as gym
 
 class Coach():
-    def __init__(self):
-        game = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='human')
-        self.env = JoypadSpace(game, COMPLEX_MOVEMENT)
+    def __init__(self, env: gym.Env) -> None:
+        # game = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='human')
+        # self.env = JoypadSpace(game, COMPLEX_MOVEMENT)
+        self.env = env
+        self.env.reset()
         self.ACTION_NAMES = self.env.get_action_meanings()
+        self.log_file = "./temp/log.txt"
         
 
     def downscale_obs(self, obs: np.ndarray, new_size: Tuple=(240, 256), to_gray: bool=True) -> np.ndarray:
@@ -41,6 +43,7 @@ class Coach():
 
         return gray if to_gray else obs
 
+
     def prepare_state(self, state: np.ndarray, add_batch_dim: bool=True) -> torch.Tensor:
         """
         downscale one state of observation to grascale and turn it from ndarray to tensor. add batch dimension(optional). (240, 256, 3) -> (240, 256) -> (1, 240, 256)
@@ -57,6 +60,7 @@ class Coach():
             new_state = torch.from_numpy(self.downscale_obs(state)).to(dtype=torch.float32)
 
         return new_state
+
 
     def prepare_initial_state(self, init_state: np.ndarray) -> torch.Tensor:
         """
@@ -94,63 +98,52 @@ class Coach():
 
         return states_queue
 
-    def policy(self, qvalues: torch.Tensor, eps: float=None):
-        """
-        select the action according to the softmaxed qvalues in action space, and choose one action according to it's probability. (why normalized??????)
 
-        Args:
-            qvalues (torch.Tensor): qvalues of each action in action space.
-            eps (float): epsilon for epsilon-greedy policy, if None, then return the action with the highest qvalue.
-        
-        Returns:
-            A torch.Tensor which is an action in action space.
-        """
-        # using epsilon-greedy
-        if eps is not None:
-            if torch.rand(1) < eps:
-                return torch.randint(low=0, high=7, size=(1,))
-            else:
-                return torch.argmax(qvalues)
-        
-        # not using epsilon-greedy
-        # choose qvalue action according to it's normalized qvalue probability
-        return torch.multinomial(torch.functional.normalize(qvalues), num_samples=1)
+
+
 
     def self_play(self):
         """
         perform one episode of self-play
         """
-
         # check if need qvalues in replay buffer later
-        self_play_replay_buffer = deque()
+        replay_buffer = deque()
 
-        qvalues = torch.rand(12)    # get qvalues from nnet
+        qvalues: torch.Tensor = torch.rand(12)    # get qvalues from nnet
         logger.debug(qvalues)
 
-        done = False
-        state_queue = self.prepare_initial_state(self.env.reset()[0])
+        self.env.reset()
+        done: bool = False
+        step_count: int = 0
+        # state_queue = self.prepare_initial_state(self.env.reset()[0])
 
+        # start logging self-play imformation
+        with open (self.log_file, "a") as f:
+            print("-"*170, file=f)
 
         while not done:
-            pi = self.policy(qvalues, eps=0.3)
+            pi: torch.Tensor = policy.Policy.episilon_greedy(qvalues, eps=0.3)
             logger.debug(pi)
 
-            action = pi.item()
+            action: int = pi.item()
             logger.debug(self.ACTION_NAMES[action])
 
-            new_state, reward, done, _, info = self.env.step(action)
-            self.env.render()
-
+            state, reward, done, _, info = self.env.step(action)
             
-            logger.debug((new_state.shape, reward, done, info))
+            step_count += 1
+            logger.debug((state.shape, reward, done, info))
+
+            with open(self.log_file, "a") as f:
+                print(f"step {step_count}: \n    reward: {reward}, \n    done: {done}, \n    info: {info}, \n    {time.strftime('%Y-%m-%d %H:%M:%S')}", file=f)
+            
             # need to check if state queue overwrited each state
-            state_queue = self.prepare_multi_state(states_queue=state_queue, new_state=new_state)     # get new state queue
+            # state_queue = self.prepare_multi_state(states_queue=state_queue, new_state=state.copy())     # get new state queue
 
-            self_play_replay_buffer.append((state_queue, action, reward, info))
-            logger.debug(len(self_play_replay_buffer))
+            replay_buffer.append((state.copy(), action, reward, info))
+            logger.debug(len(replay_buffer))
 
-        return self_play_replay_buffer   
-        
+        return replay_buffer
+
 
     def learn(self):
         """
@@ -158,16 +151,21 @@ class Coach():
         """
         pass
 
-if __name__ == "__main__":
+def main():
+    logger.debug(logger.name)
     env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='rgb_array')
     env = JoypadSpace(env, COMPLEX_MOVEMENT)
-    coach = Coach()
+    coach = Coach(env=env)
 
-    env.reset()
+    coach.env.reset()
     # logger.debug(np.shape(env.render()))
     # temp = coach.prepare_initial_state(env.render())
     # logger.debug(temp.shape)
     # temp2 = coach.prepare_multi_state(temp, env.render())
-
+    
     logger.debug(torch.rand(1))
     coach.self_play()
+
+if __name__ == "__main__":
+    main()
+    
