@@ -24,13 +24,25 @@ class MyFormatter(logging.Formatter):
 
 class MyLogging:
     _logger = logging.getLogger("my_default_logger")
+    has_handler = False
 
     @classmethod
     def get_default_logger(cls) -> logging.Logger:
-        handler = logging.StreamHandler()
-        handler.setFormatter(MyFormatter())
-        root_logger = logging.getLogger()
-        root_logger.addHandler(handler)
-        root_logger.setLevel(logging.DEBUG)
+        cls._logger.setLevel(logging.DEBUG)
+
+        if  not cls.has_handler:
+            handler = logging.StreamHandler()
+            handler.setFormatter(MyFormatter())
+            cls._logger.addHandler(handler)
+            cls.has_handler = True
 
         return cls._logger
+
+def main():
+    logger = MyLogging.get_default_logger()
+    root_logger = logging.getLogger()
+    print(root_logger.handlers)
+    print(logger.handlers)
+
+if __name__ == "__main__":
+    main()
