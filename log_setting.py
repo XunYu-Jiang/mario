@@ -24,17 +24,17 @@ class MyFormatter(logging.Formatter):
 
 class MyLogging:
     _logger = logging.getLogger("my_default_logger")
-    has_handler = False
+    _has_handler = False
 
     @classmethod
     def get_default_logger(cls) -> logging.Logger:
         cls._logger.setLevel(logging.DEBUG)
 
-        if  not cls.has_handler:
+        if  not cls._has_handler:
             handler = logging.StreamHandler()
             handler.setFormatter(MyFormatter())
             cls._logger.addHandler(handler)
-            cls.has_handler = True
+            cls._has_handler = True
 
         return cls._logger
 

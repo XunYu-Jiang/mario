@@ -1,8 +1,5 @@
-from dataclasses import dataclass
-
-@dataclass(frozen=True, slots=True)
 class Args:
-    coach_args: dict = {
+    COACH_ARGS: dict = {
         "num_Iters": 10,
         "num_episodes": 100,
         'tempThreshold': 12, #12 # 前 n 步 不一定挑最好的走步
@@ -17,7 +14,7 @@ class Args:
         'numPerProcessPlay': 4,
     }
 
-    nn_args: dict = {
+    NN_ARGS: dict = {
         "lr": 0.001,
         "drop_out": 0.3,
         "epoch": 10,
@@ -26,6 +23,7 @@ class Args:
         'num_blocks': 5
     }
     
-    file_args: dict = {
-
+    FILE_ARGS: dict = {
+        "log_dir": "./logs/",
+        "log_file": "log.txt"
     }
