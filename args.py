@@ -27,3 +27,8 @@ class Args:
         "log_dir": "./logs/",
         "log_file": "log.txt"
     }
+
+    EX_REPLAY: dict = {
+        "batch_size": 32,
+        "buffer_size": 1000
+    }

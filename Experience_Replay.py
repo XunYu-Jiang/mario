@@ -9,6 +9,7 @@ import numpy as np
 from collections import deque
 from typing import List, Dict, Tuple
 import copy
+from args import Args
 class CustomDataSet(torch.utils.data.Dataset):
     def __init__(self, states, actions, rewards, infos, next_state_values):
         self._states = states
@@ -22,10 +23,11 @@ class CustomDataSet(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         return self._states[idx], self._actions[idx], self._rewards[idx], self._infos[idx], self._next_state_values[idx]
+
 class ExperienceReplay:
-    def __init__(self, batch_size=32, buffer_size=100) -> None:
-        self._batch_size = batch_size
-        self._replay_buffer_size = buffer_size
+    def __init__(self, batch_size=32, buffer_size=1000) -> None:
+        self._batch_size = Args.EX_REPLAY["batch_size"]
+        self._replay_buffer_size = Args.EX_REPLAY["buffer_size"]
         self._replay_buffer = deque(maxlen=buffer_size)
 
     def get_replay_buffer(self) -> deque:

@@ -21,7 +21,7 @@ class Engine():
         for batch, (X, y) in enumerate(dataloader):
             X, y = X.to(device), y.to(device)
         
-            policy_pred,value_pred = nnet(X)
+            value_pred, policy_pred = nnet(X)
             action = policy_pred.sample()
 
             # think where to put
