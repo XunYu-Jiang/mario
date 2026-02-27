@@ -8,10 +8,10 @@ class Engine():
     def __init__(self):
         pass 
 
-    @classmethod
+    
     def train(cls,
-              nnet: torch.nn.Module, 
-              dataloader: torch.utils.data.DataLoader, 
+              nnet: torch.nn.Module,
+              dataloader: torch.utils.data.DataLoader,
               loss_fn: Callable, 
               optimizer: torch.optim.Optimizer,
               device: torch.device) -> None:
@@ -25,12 +25,12 @@ class Engine():
             action = policy_pred.sample()
 
             # think where to put
-            advantage = (reward + gamma * next_value) - value_pred
+            advantage = (reward + gamma * next_value_pred) - value_pred
             loss = -1 * policy_pred.logprob(action) * advantage
             min(loss)
 
         pass
-
+    
     def evaluate(self):
         pass
 
