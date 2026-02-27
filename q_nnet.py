@@ -1,7 +1,7 @@
 # log settings
-import log_setting
+from log_setting import MyLogging
 
-logger = log_setting.MyLogging.get_default_logger()
+logger = MyLogging.get_root_logger()
 
 import torch
 from torch import nn
@@ -47,8 +47,10 @@ class Q_network(nn.Module):
 if __name__ == "__main__":
     Q_model = Q_network()
     dummy_input = torch.randn((3,240,256), dtype=torch.float).unsqueeze(dim=0)
-    # logger.debug(dummy_input.shape)
+    logger.debug(dummy_input.shape)
 
     dummy_output = Q_model(dummy_input)
+    logger.debug(dummy_output.shape)
+
     dummy_output = functional.softmax(dummy_output, dim=1)
-    logger.debug(dummy_output)
+    logger.debug(dummy_output.shape)

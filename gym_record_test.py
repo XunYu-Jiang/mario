@@ -9,6 +9,8 @@ logger.setLevel(logging.DEBUG)
 
 import numpy as np
 import copy
+from tqdm import trange
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 # import mario libs
 from nes_py.wrappers import JoypadSpace
@@ -29,7 +31,8 @@ logger.debug(env.metadata)
 
 step_index = 0
 
-for i in range(5):
+# start self play
+for i in trange(5):
     termination, truncation = False, False
     obs, info = env.reset()
     record_frames = []
@@ -37,6 +40,7 @@ for i in range(5):
     logger.debug(obs.shape)
     logger.warning(f"Episode {i} starting......")
 
+    # play until termunation
     while not termination:
         state, reward, termination, truncation, info = env.step(env.action_space.sample())
         record_frames.append(state.copy())
@@ -46,6 +50,7 @@ for i in range(5):
     # for arr in record_frames:
     #     logger.debug(np.array_equiv(arr, state))
 
+    # one self play ended, save video to target dir
     logger.warning(f"episode {i} ended")
     logger.debug(np.shape(record_frames))
     logger.warning("Saving video......")

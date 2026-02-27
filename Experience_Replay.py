@@ -1,15 +1,27 @@
 # log settings
 import log_setting
 
-logger = log_setting.MyLogging.get_default_logger()
+logger = log_setting.MyLogging.get_root_logger()
 
 from random import shuffle
 import torch
 import numpy as np
 from collections import deque
-from typing import Tuple
+from typing import List, Dict, Tuple
 import copy
+class CustomDataSet(torch.utils.data.Dataset):
+    def __init__(self, states, actions, rewards, infos, next_state_values):
+        self._states = states
+        self._actions = actions
+        self._rewards = rewards
+        self._infos = infos
+        self._next_state_values = next_state_values
 
+    def __len__(self):
+        return len(self._states)
+
+    def __getitem__(self, idx):
+        return self._states[idx], self._actions[idx], self._rewards[idx], self._infos[idx], self._next_state_values[idx]
 class ExperienceReplay:
     def __init__(self, batch_size=32, buffer_size=100) -> None:
         self._batch_size = batch_size
@@ -19,7 +31,7 @@ class ExperienceReplay:
     def get_replay_buffer(self) -> deque:
         return self._replay_buffer
     
-    def add_replay(self, states, action, reward, info) -> None:
+    def add_replay(self, states: torch.Tensor, action: int, reward: float, info: Dict, next_state_value: float) -> None:
         """
         add grayscale state_queue, action, reward, info into replay buffer.
 
@@ -38,12 +50,12 @@ class ExperienceReplay:
             self._replay_buffer.popleft()
             self._replay_buffer.append((states, action, reward, info))
     
-    def get_last_replay(self) -> Tuple[torch.Tensor, int, float, dict]:
+    def get_last_replay(self) -> List[Tuple[torch.Tensor, int, float, Dict, float]]:
         """
         get a copy of last replay from replay buffer.
 
         Returns:
-            Tuple[torch.Tensor, int, float, dict]: last replay history
+            List[torch.Tensor, int, float, dict]: last replay history
         """
         if len(self._replay_buffer) < 1:
             logger.critical("No replay in buffer.")
@@ -51,7 +63,7 @@ class ExperienceReplay:
         
         return torch.clone(self._replay_buffer[-1][0]).detach(), self._replay_buffer[-1][1], self.replay_buffer[-1][2], copy.deepcopy(self.replay_buffer[-1][3])
     
-    def get_batch(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def get_batch(self) -> List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
         """
         get replays from replay buffer and encapsulate them into batches like.
         """
