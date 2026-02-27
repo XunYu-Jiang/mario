@@ -1,7 +1,7 @@
 class Args:
     COACH_ARGS: dict = {
-        "num_iters": 3,
-        "num_episodes": 10,
+        "num_iters": 2,
+        "num_episodes": 2,
         'tempThreshold': 12, #12 # 前 n 步 不一定挑最好的走步
         'updateThreshold': 0.6, # 超過
         'buffer_size': 20000,#200000 訓練記錄

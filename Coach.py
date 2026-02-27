@@ -59,6 +59,8 @@ class Coach():
         logger.info(f"env action space: {self._env.action_space}")
 
         self._log_path = os.path.join(Args.FILE_ARGS["log_dir"], Args.FILE_ARGS["log_file"])
+        self.num_iters: int = Args.COACH_ARGS["num_iters"]
+        self.num_episodes: int = Args.COACH_ARGS["num_episodes"]
 
         if not os.path.exists(Args.FILE_ARGS["log_dir"]):
             os.mkdir(Args.FILE_ARGS["log_dir"])
@@ -184,10 +186,17 @@ class Coach():
         Returns:
             self_play_examples (List[Tuple[torch.Tensor, int, float, Dict]]): A list of self-play records with format of (states_queue, action_index, reward, info).
         """
-        # check if need qvalues in replay buffer later
+
+        #initialize data
+        last_action_index = 0
+        last_reward = 0.
+        last_value_pred = 0.
+        last_prob_pred = torch.tensor([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+        last_info = None
+
         self_play_examples = []
         record_frames = []
-
+        
         state, _ = self._env.reset()
         done: bool = False
         step_count: int = 0
@@ -195,14 +204,8 @@ class Coach():
         record_frames.append(state.copy())
         # downscale state to grayscale and turn it into format of nnet input (240, 256, 3) -> (240, 256) -> (3, 240, 256)
         states_queue: torch.Tensor = self._prepare_initial_state(state.copy(), add_batch_dim=False)
+        last_states_queue: torch.Tensor = states_queue.clone().detach()
 
-        # initialize data
-        last_states_queue = states_queue.clone().detach()
-        last_action_index = 0
-        last_reward = 0.
-        last_value_pred = 0.
-        last_prob_pred = torch.tensor([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
-        last_info = None
 
         # start logging self-play imformation
         with open (self._log_path, "a") as f:
@@ -243,14 +246,12 @@ class Coach():
 
         return self_play_examples, record_frames
 
-
     def learn(self):
         """
         main training process
         """
 
-        num_iters: int = Args.COACH_ARGS["num_iters"]
-        num_episodes: int = Args.COACH_ARGS["num_episodes"]
+        
         # episode_example, record_frames = self._self_play()
         # logger.debug((record_frames[0].shape, len(record_frames)))
 
@@ -261,22 +262,11 @@ class Coach():
         # Redirect log and print to tqdm.write
         with logging_redirect_tqdm(), print_redirect_tqdm():
             # for every iteration
-            for iter in trange(num_iters,  desc="Iteration", colour="blue", bar_format=my_bar_fmt):
+            for iter in trange(self.num_iters,  desc="Iteration", colour="blue", bar_format=my_bar_fmt):
                 # for every self-play
-                for episode in trange(num_episodes, desc="Self Play", leave=False, colour="cyan", bar_format=my_bar_fmt):
+                for episode in trange(self.num_episodes, desc="Self Play", leave=False, colour="cyan", bar_format=my_bar_fmt):
                     
-                    # initialize param in the start of a self-play
-                    obs, info = self._env.reset()
-                    record_frames = []
-                    step_index = 0
-                    termination, truncation = False, False
-
-                    while not termination:
-                        state, reward, termination, truncation, info = self._env.step(self._env.action_space.sample())
-                        record_frames.append(state.copy())
-
-                        step_index += 1
-
+                    self_play_examples, record_frames = self._self_play()
                     # one self play ended, save video and records to experience replay
 
                     save_video(
@@ -287,7 +277,7 @@ class Coach():
                         episode_trigger=lambda x: True,
                         # step_trigger=lambda x : True,
                         # step_starting_index=step_starting_index,
-                        episode_index=episode
+                        episode_index=f"{iter + 1}-{episode + 1}"
                     )
 
                     # need to preprocess record_frames to 3 state grayscale frames -> [(3, 240, 256), (3, 240, 256)...]
@@ -359,7 +349,6 @@ def main():
     coach = Coach(env=env, nnet=NNetWrapper(AdvActorCriticNNet()), policy=Policy.episilon_greedy)
 
     coach.reset_env()
-    # coach._self_play()
     coach.learn()
 
 if __name__ == "__main__":
