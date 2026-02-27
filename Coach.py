@@ -93,9 +93,9 @@ class Coach():
             A torch.Tensor which is a downscaled grayscale state observation with shape of (1, 240, 256) if add_batch_dim else (240,256).
         """
         if add_batch_dim:
-            new_state = torch.from_numpy(self._downscale_obs(state.copy())).unsqueeze(dim=0)
+            new_state = torch.from_numpy(self._downscale_obs(state)).unsqueeze(dim=0)
         else:
-            new_state = torch.from_numpy(self._downscale_obs(state.copy()))
+            new_state = torch.from_numpy(self._downscale_obs(state))
 
         return new_state
 
@@ -138,7 +138,7 @@ class Coach():
         return states_queue
 
 
-    def _get_cumulated_reward(self, state_queue: torch.Tensor) -> torch.Tensor:
+    def _get_cumulated_reward(self, states_queue: torch.Tensor) -> torch.Tensor:
         """
         Using self.nnet to caculate cumulated reward for every state in one episode of self_play. Append next_state_value to the end of every example.
 
@@ -147,7 +147,7 @@ class Coach():
         """
 
         logger.warning("prediction not implemented")
-        value_next_pred, _ = self._nnet.predict(state_queue)
+        value_next_pred, _ = self._nnet.predict(states_queue)
 
         raise NotImplementedError
         return value_next_pred
@@ -159,9 +159,9 @@ class Coach():
         """
         raise NotImplementedError
 
-    def _get_action(self, state_queue: torch.Tensor) -> int:
+    def _get_action(self, states_queue: torch.Tensor) -> int:
         # get policy and value from nnet
-        # self._policy(self._nnet.predict(state_queue)[0])
+        # self._policy(self._nnet.predict(states_queue)[0])
         values_pred: torch.Tensor = torch.randint(0, 12, (1,))    # get qvalues from nnet
 
         return values_pred.item()
@@ -177,9 +177,12 @@ class Coach():
     def _self_play(self) -> Tuple[List[Tuple[torch.Tensor,int, float, Dict]], List[np.ndarray]]:
         """
         Perform one episode of self-play.
+        self_play_examples: A list of a single self-play records with format of 
+                            (states_queue, action_index, reward, last_value_pred, value_pred, prob_pred, info).
+        record_frames (List[np.ndarray]): A list of RAW RGB data of one episode of self-play.
 
         Returns:
-            self_play_examples (List[Tuple[torch.Tensor, int, float, Dict]]): A list of self-play records with format of (state_queue, action_index, reward, info).
+            self_play_examples (List[Tuple[torch.Tensor, int, float, Dict]]): A list of self-play records with format of (states_queue, action_index, reward, info).
         """
         # check if need qvalues in replay buffer later
         self_play_examples = []
@@ -191,51 +194,53 @@ class Coach():
 
         record_frames.append(state.copy())
         # downscale state to grayscale and turn it into format of nnet input (240, 256, 3) -> (240, 256) -> (3, 240, 256)
-        state_queue: torch.Tensor = self._prepare_initial_state(state, add_batch_dim=False)
+        states_queue: torch.Tensor = self._prepare_initial_state(state.copy(), add_batch_dim=False)
 
-        # initialize last_state_queue
-        last_state_queue = state_queue.clone()
+        # initialize data
+        last_states_queue = states_queue.clone().detach()
+        last_action_index = 0
+        last_reward = 0.
+        last_value_pred = 0.
+        last_prob_pred = torch.tensor([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+        last_info = None
 
         # start logging self-play imformation
         with open (self._log_path, "a") as f:
             print("-"*150, file=f)
 
         while not done:
-            action_index: int = self._get_action(state_queue)
+            step_count += 1
+            
+            action_index: int = self._get_action(states_queue)
 
             # interact with env
             state, reward, done, _, info = self._env.step(action_index)
-            step_count += 1
+            
             # add new state to record_frames
             record_frames.append(state.copy())
             self._env.render()
 
 
             # get a new copy of tensor_queue every time
-            state_queue = self._prepare_multi_state(state_queue, state)
+            states_queue = self._prepare_multi_state(states_queue, state.copy())
             # get state value from last state
-            value_pred, _ = self._nnet.predict(state_queue)
+            value_pred, prob_pred = self._nnet.predict(states_queue)
             
             with open(self._log_path, "a") as f:
-                print(f"step {step_count} at {time.strftime('%Y-%m-%d %H:%M:%S')}:\n    reward: {reward}, \n    info: {info}", file=f)
-            
-            # initialize last_action_index, last_reward, last_info if it is the first step
-            if step_count == 1:
-                last_action_index = action_index
-                last_reward = reward
-                last_info = copy.deepcopy(info)
+                print(f"step {step_count} at {time.strftime('%Y-%m-%d %H:%M:%S')}:\n    reward: {reward},\n    prob: {prob_pred}\n    info: {info}", file=f)
 
-            # need to check if state queue overwrited each state
-            self_play_examples.append((last_state_queue, last_action_index, last_reward, last_info, value_pred))
-            last_state_queue = state_queue
+            self_play_examples.append((last_states_queue, last_action_index, last_reward, last_value_pred, value_pred, last_prob_pred,last_info))
+            last_states_queue = states_queue
             last_action_index = action_index
             last_reward = reward
+            last_value_pred = value_pred
+            last_prob_pred = prob_pred
             last_info = copy.deepcopy(info)
-        else:
-            # add last state to self_play_examples with next_state_value = 0(since it is terminal state)
-            self_play_examples.append((last_state_queue, last_action_index, last_reward, last_info, 0.))
-        
-        logger.debug(f"{len(self_play_examples)}, {len(self_play_examples[0])}")
+
+        # add last state to self_play_examples with next_state_value = 0(since it is terminal state)
+        self_play_examples.append((last_states_queue, last_action_index, last_reward, 0., last_prob_pred, last_info))
+        logger.debug(f"game length: {len(self_play_examples)}, {len(self_play_examples[0])}")
+
         return self_play_examples, record_frames
 
 
