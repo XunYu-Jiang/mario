@@ -1,7 +1,7 @@
 # log settings
 import log_setting
 
-logger = log_setting.MyLogging.get_default_logger()
+logger = log_setting.MyLogging.get_root_logger()
 
 import numpy as np
 from typing import Tuple, Callable, List, Dict
@@ -10,8 +10,10 @@ import time
 from policy import Policy
 from args import Args
 import os
-from rich.progress import track
+import copy
+
 from experience_replay import ExperienceReplay
+from pathlib import Path
 
 # testing
 from nnet_wrapper import NNetWrapper
@@ -20,11 +22,33 @@ from nes_py.wrappers import JoypadSpace
 import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, COMPLEX_MOVEMENT
 import gymnasium as gym
+from gym.utils.save_video import save_video
 
+import contextlib
+import inspect
+from tqdm import trange, tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
+
+# Use tqdm.write instead of print to avoid progress bar breaks
+@contextlib.contextmanager
+def print_redirect_tqdm():
+    old_print = print
+
+    def new_print(*args, **kwargs):
+        # If tqdm.write raises error, use built-in print
+        try:
+            tqdm.write(*args, **kwargs)
+        except:
+            old_print(*args, **kwargs)
+
+    try:
+        # Globaly replace print with new print
+        inspect.builtins.print = new_print
+        yield
+    finally:
+        inspect.builtins.print = old_print
 class Coach():
     def __init__(self, env: gym.Env, nnet: NNetWrapper, policy: Callable) -> None:
-        # game = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='human')
-        # self.env = JoypadSpace(game, COMPLEX_MOVEMENT)
         self._env = env
         self._env.reset()
         self._nnet = nnet
@@ -69,9 +93,9 @@ class Coach():
             A torch.Tensor which is a downscaled grayscale state observation with shape of (1, 240, 256) if add_batch_dim else (240,256).
         """
         if add_batch_dim:
-            new_state = torch.from_numpy(self._downscale_obs(state)).to(dtype=torch.float32).unsqueeze(dim=0)
+            new_state = torch.from_numpy(self._downscale_obs(state.copy())).unsqueeze(dim=0)
         else:
-            new_state = torch.from_numpy(self._downscale_obs(state)).to(dtype=torch.float32)
+            new_state = torch.from_numpy(self._downscale_obs(state.copy()))
 
         return new_state
 
@@ -114,17 +138,26 @@ class Coach():
         return states_queue
 
 
-    def _caculate_cumulated_reward(self):
+    def _get_cumulated_reward(self, state_queue: torch.Tensor) -> torch.Tensor:
         """
-        Caculate cumulated reward every state in one self_play
+        Using self.nnet to caculate cumulated reward for every state in one episode of self_play. Append next_state_value to the end of every example.
+
+        Args:
+            self_play_examples (List[Tuple[torch.Tensor, int, float, Dict]]): one episode of self_play.
         """
-        pass
+
+        logger.warning("prediction not implemented")
+        value_next_pred, _ = self._nnet.predict(state_queue)
+
+        raise NotImplementedError
+        return value_next_pred
+        
 
     def _get_dataloader(self):
         """
         create dataloader from replay buffer
         """
-        pass
+        raise NotImplementedError
 
     def _get_action(self, state_queue: torch.Tensor) -> int:
         # get policy and value from nnet
@@ -133,57 +166,77 @@ class Coach():
 
         return values_pred.item()
 
-    def _log_self_play(self):
-        pass
-
     def reset_env(self) -> None:
         """
-        Reset the environment outside of Coach class.
+        Reset the environment outside of Coach class, since self._env is not accessible outside of Coach class.
         """
         self._env.reset()
 
-    def _self_play(self) -> List[Tuple[torch.Tensor,int, float, Dict]]:
+    # def record_play(self, record_frames: List[np.ndarray], record_dir: Path | str):
+
+    def _self_play(self) -> Tuple[List[Tuple[torch.Tensor,int, float, Dict]], List[np.ndarray]]:
         """
         Perform one episode of self-play.
 
         Returns:
-            List[Tuple[torch.Tensor, int, float, Dict]]: A list of self-play records with format of (state_queue, action_index, reward, info).
+            self_play_examples (List[Tuple[torch.Tensor, int, float, Dict]]): A list of self-play records with format of (state_queue, action_index, reward, info).
         """
         # check if need qvalues in replay buffer later
         self_play_examples = []
+        record_frames = []
 
         state, _ = self._env.reset()
         done: bool = False
         step_count: int = 0
 
+        record_frames.append(state.copy())
         # downscale state to grayscale and turn it into format of nnet input (240, 256, 3) -> (240, 256) -> (3, 240, 256)
-        states_queue: torch.Tensor = self._prepare_initial_state(state, add_batch_dim=False)
+        state_queue: torch.Tensor = self._prepare_initial_state(state, add_batch_dim=False)
+
+        # initialize last_state_queue
+        last_state_queue = state_queue.clone()
 
         # start logging self-play imformation
         with open (self._log_path, "a") as f:
             print("-"*150, file=f)
 
         while not done:
-            action_index: int = self._get_action(states_queue)
-            # logger.debug(self.ACTION_NAMES[action_index])
+            action_index: int = self._get_action(state_queue)
 
+            # interact with env
             state, reward, done, _, info = self._env.step(action_index)
             step_count += 1
+            # add new state to record_frames
+            record_frames.append(state.copy())
             self._env.render()
 
-            # get a new tensor every time
-            states_queue = self._prepare_multi_state(states_queue, state)
-            # logger.debug((states_queue.shape, reward, done, info))
 
+            # get a new copy of tensor_queue every time
+            state_queue = self._prepare_multi_state(state_queue, state)
+            # get state value from last state
+            value_pred, _ = self._nnet.predict(state_queue)
+            
             with open(self._log_path, "a") as f:
                 print(f"step {step_count} at {time.strftime('%Y-%m-%d %H:%M:%S')}:\n    reward: {reward}, \n    info: {info}", file=f)
             
-            # need to check if state queue overwrited each state
-            self_play_examples.append((states_queue, action_index, reward, info))
-        
-        logger.debug(len(self_play_examples))
+            # initialize last_action_index, last_reward, last_info if it is the first step
+            if step_count == 1:
+                last_action_index = action_index
+                last_reward = reward
+                last_info = copy.deepcopy(info)
 
-        return self_play_examples
+            # need to check if state queue overwrited each state
+            self_play_examples.append((last_state_queue, last_action_index, last_reward, last_info, value_pred))
+            last_state_queue = state_queue
+            last_action_index = action_index
+            last_reward = reward
+            last_info = copy.deepcopy(info)
+        else:
+            # add last state to self_play_examples with next_state_value = 0(since it is terminal state)
+            self_play_examples.append((last_state_queue, last_action_index, last_reward, last_info, 0.))
+        
+        logger.debug(f"{len(self_play_examples)}, {len(self_play_examples[0])}")
+        return self_play_examples, record_frames
 
 
     def learn(self):
@@ -193,12 +246,49 @@ class Coach():
 
         num_iters: int = Args.COACH_ARGS["num_iters"]
         num_episodes: int = Args.COACH_ARGS["num_episodes"]
+        # episode_example, record_frames = self._self_play()
+        # logger.debug((record_frames[0].shape, len(record_frames)))
 
-        for iter in track(range(num_iters), description="[blue]Start: Iteration"):
-            for episode in track(range(num_episodes), description="[green]Start: Self Play", transient=True):
-                episode_example = self._self_play()
-                self.ex_replay.add_replay(episode_example)
-                # time.sleep(0.5)
+        logger.warning("Start self play...")
+
+        my_bar_fmt = "{desc}: |{bar}| {n_fmt}/{total_fmt} {remaining},{rate_fmt}{postfix}"
+
+        # Redirect log and print to tqdm.write
+        with logging_redirect_tqdm(), print_redirect_tqdm():
+            # for every iteration
+            for iter in trange(num_iters,  desc="Iteration", colour="blue", bar_format=my_bar_fmt):
+                # for every self-play
+                for episode in trange(num_episodes, desc="Self Play", leave=False, colour="cyan", bar_format=my_bar_fmt):
+                    
+                    # initialize param in the start of a self-play
+                    obs, info = self._env.reset()
+                    record_frames = []
+                    step_index = 0
+                    termination, truncation = False, False
+
+                    while not termination:
+                        state, reward, termination, truncation, info = self._env.step(self._env.action_space.sample())
+                        record_frames.append(state.copy())
+
+                        step_index += 1
+
+                    # one self play ended, save video and records to experience replay
+
+                    save_video(
+                        frames=record_frames,
+                        video_folder="./temp",
+                        name_prefix="test",
+                        fps=self._env.metadata["video.frames_per_second"],
+                        episode_trigger=lambda x: True,
+                        # step_trigger=lambda x : True,
+                        # step_starting_index=step_starting_index,
+                        episode_index=episode
+                    )
+
+                    # need to preprocess record_frames to 3 state grayscale frames -> [(3, 240, 256), (3, 240, 256)...]
+                    # self._ex_replay.add_replay()
+                    
+
 
 
 
@@ -270,5 +360,6 @@ def main():
 if __name__ == "__main__":
     # test_process_state()
     main()
+
 
     
