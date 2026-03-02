@@ -30,23 +30,7 @@ from tqdm import trange, tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
 # Use tqdm.write instead of print to avoid progress bar breaks
-@contextlib.contextmanager
-def print_redirect_tqdm():
-    old_print = print
 
-    def new_print(*args, **kwargs):
-        # If tqdm.write raises error, use built-in print
-        try:
-            tqdm.write(*args, **kwargs)
-        except:
-            old_print(*args, **kwargs)
-
-    try:
-        # Globaly replace print with new print
-        inspect.builtins.print = new_print
-        yield
-    finally:
-        inspect.builtins.print = old_print
 class Coach():
     def __init__(self, env: gym.Env, nnet: NNetWrapper, policy: Callable) -> None:
         self._env = env
@@ -179,12 +163,12 @@ class Coach():
     def _self_play(self) -> Tuple[List[Tuple[torch.Tensor,int, float, Dict]], List[np.ndarray]]:
         """
         Perform one episode of self-play.
-        self_play_examples: A list of a single self-play records with format of 
+        self_play_example: A list of a single self-play records with format of 
                             (states_queue, action_index, reward, last_value_pred, value_pred, prob_pred, info).
         record_frames (List[np.ndarray]): A list of RAW RGB data of one episode of self-play.
 
         Returns:
-            self_play_examples (List[Tuple[torch.Tensor, int, float, Dict]]): A list of self-play records with format of (states_queue, action_index, reward, info).
+            self_play_example (List[Tuple[torch.Tensor, int, float, Dict]]): A list of self-play records with format of (states_queue, action_index, reward, info).
         """
 
         #initialize data
@@ -194,7 +178,7 @@ class Coach():
         last_prob_pred = torch.tensor([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
         last_info = None
 
-        self_play_examples = []
+        self_play_example = []
         record_frames = []
         
         state, _ = self._env.reset()
@@ -232,7 +216,7 @@ class Coach():
             with open(self._log_path, "a") as f:
                 print(f"step {step_count} at {time.strftime('%Y-%m-%d %H:%M:%S')}:\n    reward: {reward},\n    prob: {prob_pred}\n    info: {info}", file=f)
 
-            self_play_examples.append((last_states_queue, last_action_index, last_reward, last_value_pred, value_pred, last_prob_pred,last_info))
+            self_play_example.append((last_states_queue, last_action_index, last_reward, last_value_pred, value_pred, last_prob_pred,last_info))
             last_states_queue = states_queue
             last_action_index = action_index
             last_reward = reward
@@ -240,11 +224,11 @@ class Coach():
             last_prob_pred = prob_pred
             last_info = copy.deepcopy(info)
 
-        # add last state to self_play_examples with next_state_value = 0(since it is terminal state)
-        self_play_examples.append((last_states_queue, last_action_index, last_reward, 0., last_prob_pred, last_info))
-        logger.debug(f"game length: {len(self_play_examples)}, {len(self_play_examples[0])}")
+        # add last state to self_play_example with next_state_value = 0(since it is terminal state)
+        self_play_example.append((last_states_queue, last_action_index, last_reward, 0., last_prob_pred, last_info))
+        logger.debug(f"game length: {len(self_play_example)}, {len(self_play_example[0])}")
 
-        return self_play_examples, record_frames
+        return self_play_example, record_frames
 
     def learn(self):
         """
@@ -257,31 +241,29 @@ class Coach():
 
         logger.warning("Start self play...")
 
-        my_bar_fmt = "{desc}: |{bar}| {n_fmt}/{total_fmt} {remaining},{rate_fmt}{postfix}"
+        bar_fmt = "{desc}: |{bar}| {n_fmt}/{total_fmt} {remaining},{rate_fmt}{postfix}"
 
-        # Redirect log and print to tqdm.write
-        with logging_redirect_tqdm(), print_redirect_tqdm():
-            # for every iteration
-            for iter in trange(self.num_iters,  desc="Iteration", colour="blue", bar_format=my_bar_fmt):
-                # for every self-play
-                for episode in trange(self.num_episodes, desc="Self Play", leave=False, colour="cyan", bar_format=my_bar_fmt):
-                    
-                    self_play_examples, record_frames = self._self_play()
-                    # one self play ended, save video and records to experience replay
+        # for every iteration
+        for iter in trange(self.num_iters,  desc="Iteration", colour="blue", bar_format=bar_fmt):
+            # for every self-play
+            for episode in trange(self.num_episodes, desc="Self Play", leave=False, colour="cyan", bar_format=bar_fmt):
+                
+                self_play_example, record_frames = self._self_play()
+                # one self play ended, save video and records to experience replay
 
-                    save_video(
-                        frames=record_frames,
-                        video_folder="./temp",
-                        name_prefix="test",
-                        fps=self._env.metadata["video.frames_per_second"],
-                        episode_trigger=lambda x: True,
-                        # step_trigger=lambda x : True,
-                        # step_starting_index=step_starting_index,
-                        episode_index=f"{iter + 1}-{episode + 1}"
-                    )
+                save_video(
+                    frames=record_frames,
+                    video_folder="./temp",
+                    name_prefix="test",
+                    fps=self._env.metadata["video.frames_per_second"],
+                    episode_trigger=lambda x: True,
+                    # step_trigger=lambda x : True,
+                    # step_starting_index=step_starting_index,
+                    episode_index=f"{iter + 1}-{episode + 1}"
+                )
 
-                    # need to preprocess record_frames to 3 state grayscale frames -> [(3, 240, 256), (3, 240, 256)...]
-                    # self._ex_replay.add_replay()
+                # need to preprocess record_frames to 3 state grayscale frames -> [(3, 240, 256), (3, 240, 256)...]
+                # self._ex_replay.add_replay()
                     
 
 
