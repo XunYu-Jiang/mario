@@ -19,7 +19,7 @@ class NNetWrapper():
         """"""
         self._engine.train()
     
-    def predict(self, obs: torch.Tensor) -> torch.Tensor | Tuple:
+    def predict(self, state_queue: torch.Tensor, mode="inference") -> torch.Tensor | Tuple:
         # v_pred, p_pred = self._nnet(obs)
 
         return torch.zeros(1), torch.zeros(12)

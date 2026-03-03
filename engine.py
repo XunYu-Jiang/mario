@@ -18,16 +18,22 @@ class Engine():
         train_loss = 0
 
         # seudo code
-        for batch, (X, y) in enumerate(dataloader):
-            X, y = X.to(device), y.to(device)
-        
-            value_pred, policy_pred = nnet(X)
-            action = policy_pred.sample()
+        for batch, X in enumerate(dataloader):
+            optimizer.zero_grad()
+
+            X = X.to(device)
+            last_reward, last_value_pred, last_reward, last_prob_pred  = X[0], X[1], X[2], X[3]
+            # action = policy_pred.sample()
 
             # think where to put
-            advantage = (reward + gamma * next_value_pred) - value_pred
-            loss = -1 * policy_pred.logprob(action) * advantage
-            min(loss)
+            advantage = (last_reward + gamma * value_pred) - last_value_pred
+
+            actor_loss = -1 * last_prob_pred.logprob(action) * advantage
+            critic_loss = torch.pow(advantage, 2)
+            total_loss = actor_loss.sum() + discount * critic_loss.sum()
+
+            total_loss.backward()
+            optimizer.step()
 
         pass
     

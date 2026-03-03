@@ -7,7 +7,7 @@ import numpy as np
 from typing import Tuple, Callable, List, Dict
 import torch
 import time
-from policy import Policy
+from algorithm import Policy
 from args import Args
 import os
 import copy
@@ -145,12 +145,12 @@ class Coach():
         """
         raise NotImplementedError
 
-    def _get_action(self, states_queue: torch.Tensor) -> int:
+    def _get_action(self, prob_pred: torch.Tensor) -> int:
         # get policy and value from nnet
-        # self._policy(self._nnet.predict(states_queue)[0])
+        action_idx = torch.argmax(prob_pred)
         values_pred: torch.Tensor = torch.randint(0, 12, (1,))    # get qvalues from nnet
 
-        return values_pred.item()
+        return action_idx
 
     def reset_env(self) -> None:
         """
@@ -175,7 +175,7 @@ class Coach():
         last_action_index = 0
         last_reward = 0.
         last_value_pred = 0.
-        last_prob_pred = torch.tensor([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+        last_prob_pred: torch.Tensor = None
         last_info = None
 
         self_play_example = []
@@ -197,8 +197,9 @@ class Coach():
 
         while not done:
             step_count += 1
-            
-            action_index: int = self._get_action(states_queue)
+            # prob_pred: torch.Tensor = torch.tensor([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+            value_pred, prob_pred = self._nnet.predict(states_queue, mode="train")
+            action_index: int = self._get_action(prob_pred)
 
             # interact with env
             state, reward, done, _, info = self._env.step(action_index)
@@ -212,16 +213,18 @@ class Coach():
             states_queue = self._prepare_multi_state(states_queue, state.copy())
             # get state value from last state
             value_pred, prob_pred = self._nnet.predict(states_queue)
+
+            action_index = self._get_action(prob_pred)
             
             with open(self._log_path, "a") as f:
                 print(f"step {step_count} at {time.strftime('%Y-%m-%d %H:%M:%S')}:\n    reward: {reward},\n    prob: {prob_pred}\n    info: {info}", file=f)
 
-            self_play_example.append((last_states_queue, last_action_index, last_reward, last_value_pred, value_pred, last_prob_pred,last_info))
+            self_play_example.append((last_states_queue, last_action_index, last_reward, last_value_pred, value_pred, last_prob_pred, last_info))
             last_states_queue = states_queue
             last_action_index = action_index
             last_reward = reward
-            last_value_pred = value_pred
-            last_prob_pred = prob_pred
+            last_value_pred = value_pred.clone().detach()
+            last_prob_pred = prob_pred.clone().detach()     ##detach or not????
             last_info = copy.deepcopy(info)
 
         # add last state to self_play_example with next_state_value = 0(since it is terminal state)
@@ -243,6 +246,7 @@ class Coach():
 
         bar_fmt = "{desc}: |{bar}| {n_fmt}/{total_fmt} {remaining},{rate_fmt}{postfix}"
 
+        replay_buffer = []
         # for every iteration
         for iter in trange(self.num_iters,  desc="Iteration", colour="blue", bar_format=bar_fmt):
             # for every self-play
@@ -262,6 +266,7 @@ class Coach():
                     episode_index=f"{iter + 1}-{episode + 1}"
                 )
 
+                replay_buffer.append(self_play_example)
                 # need to preprocess record_frames to 3 state grayscale frames -> [(3, 240, 256), (3, 240, 256)...]
                 # self._ex_replay.add_replay()
                     
