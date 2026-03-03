@@ -11,7 +11,7 @@ from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, COMPLEX_MOVEMENT
 from coach import Coach
 from nnet_wrapper import NNetWrapper
 from adv_actor_critic_nnet import AdvActorCriticNNet
-from policy import Policy
+from algorithm import Algorithom
 
 import contextlib
 import inspect
@@ -41,7 +41,7 @@ def main():
     with logging_redirect_tqdm(), print_redirect_tqdm():
         env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='human')
         env = JoypadSpace(env, COMPLEX_MOVEMENT)
-        coach = Coach(env=env, nnet=NNetWrapper(AdvActorCriticNNet()), policy=Policy.episilon_greedy)
+        coach = Coach(env=env, nnet=NNetWrapper(AdvActorCriticNNet()), policy=Algorithom.Policy.episilon_greedy)
         coach.learn()
     
 
