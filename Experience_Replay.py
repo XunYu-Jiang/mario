@@ -28,29 +28,26 @@ class ExperienceReplay:
     def __init__(self, batch_size=32, buffer_size=1000) -> None:
         self._batch_size = Args.EX_REPLAY["batch_size"]
         self._replay_buffer_size = Args.EX_REPLAY["buffer_size"]
-        self._replay_buffer = deque(maxlen=buffer_size)
+        self._replay_buffer: deque = deque(maxlen=buffer_size)
 
     def get_replay_buffer(self) -> deque:
         return self._replay_buffer
     
-    def add_replay(self, states: torch.Tensor, action: int, reward: float, info: Dict, next_state_value: float) -> None:
+    def add_replay(self, self_play_example: Tuple) -> None:
         """
         add grayscale state_queue, action, reward, info into replay buffer.
 
         Args:
-            states (torch.Tensor): last 3 grayscale state observations. (3, 240, 256)
-            action (int): last action from actor.
-            reward (torch.Tensor): reward from mario env depands on last action.
-            info (dict): last info from mario env.
+            self_play_example (Tuple): (last_state_queue, last_reward, last_value_pred, value_pred) in Q_learning
         
         Returns:
             None
         """
         if len(self._replay_buffer) < self._replay_buffer_size:
-            self._replay_buffer.append((states, action, reward, info))
+            self._replay_buffer.append(self_play_example)
         else:
             self._replay_buffer.popleft()
-            self._replay_buffer.append((states, action, reward, info))
+            self._replay_buffer.append(self_play_example)
     
     def get_last_replay(self) -> List[Tuple[torch.Tensor, int, float, Dict, float]]:
         """
