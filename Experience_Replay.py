@@ -10,19 +10,31 @@ from collections import deque
 from typing import List, Dict, Tuple
 import copy
 from args import Args
+
 class CustomDataSet(torch.utils.data.Dataset):
-    def __init__(self, states, actions, rewards, infos, next_state_values):
-        self._states = states
-        self._actions = actions
-        self._rewards = rewards
-        self._infos = infos
-        self._next_state_values = next_state_values
+    def __init__(self, replay_buffer: deque):
+        # self.replay_buffer = replay_buffer
+        self.last_reward = []
+        self.last_value_pred = []
+        self.value_pred = []
+        for train_example in replay_buffer:
+            for st, lw, lv, v in train_example:
+                self.last_reward.append(lw)
+                logger.debug(self.last_reward)
+                self.last_value_pred.append(lv)
+                logger.debug(len(self.last_value_pred))
+                self.value_pred.append(v)
+                logger.debug(len(self.value_pred))
+
+        logger.debug(f"{len(self.last_reward)}, {len(self.last_value_pred)}, {len(self.value_pred)}")
+        
+        ### need optimization
 
     def __len__(self):
-        return len(self._states)
+        return len(self.last_reward)
 
     def __getitem__(self, idx):
-        return self._states[idx], self._actions[idx], self._rewards[idx], self._infos[idx], self._next_state_values[idx]
+        return -1, (self.last_reward[idx], self.last_value_pred[idx], self.value_pred[idx])
 
 class ExperienceReplay:
     def __init__(self, batch_size=32, buffer_size=1000) -> None:

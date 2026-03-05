@@ -12,7 +12,7 @@ from args import Args
 import os
 import copy
 
-from experience_replay import ExperienceReplay
+from experience_replay import ExperienceReplay, CustomDataSet
 from pathlib import Path
 
 # testing
@@ -24,10 +24,9 @@ from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, COMPLEX_MOVEMENT
 import gymnasium as gym
 from gym.utils.save_video import save_video
 
-import contextlib
-import inspect
-from tqdm import trange, tqdm
-from tqdm.contrib.logging import logging_redirect_tqdm
+from tqdm import trange
+from torch.utils.data import DataLoader
+
 
 # Use tqdm.write instead of print to avoid progress bar breaks
 
@@ -220,6 +219,9 @@ class Coach():
                 last_states_queue = states_queue
                 last_reward = reward
 
+                if step_count > 2:
+                    break
+
         # add last state to self_play_example with next_state_value = 0(since it is terminal state)
         self_play_example.append((last_states_queue, last_reward, last_value_pred, value_pred))
         logger.debug(f"game length: {len(self_play_example)}")
@@ -240,7 +242,7 @@ class Coach():
         bar_fmt = "{desc}: |{bar}| {n_fmt}/{total_fmt} {remaining},{rate_fmt}{postfix}"
 
         # for every iteration
-        for iter in trange(self.num_iters,  desc="Iteration", colour="blue", bar_format=bar_fmt):
+        for iteration in trange(self.num_iters,  desc="Iteration", colour="blue", bar_format=bar_fmt):
             # for every self-play
             for episode in trange(self.num_episodes, desc="Self Play", leave=False, colour="cyan", bar_format=bar_fmt):
                 
@@ -255,11 +257,20 @@ class Coach():
                     episode_trigger=lambda x: True,
                     # step_trigger=lambda x : True,
                     # step_starting_index=step_starting_index,
-                    episode_index=f"{iter + 1}-{episode + 1}"
+                    episode_index=f"{iteration + 1}-{episode + 1}"
                 )
 
                 self.ex_replay.add_replay(self_play_example)
             
+            # get replay into dataset and dataloader...
+            
+            logger.warning(f"Start training iter {iteration + 1}...")
+            custom_dataset = CustomDataSet(self._replay_buffer)
+            train_dataloader = DataLoader(custom_dataset, batch_size=Args.NN_ARGS["batch_size"], shuffle=True)
+            logger.debug(train_dataloader.__iter__())
+            logger.debug(next(iter(train_dataloader)))
+            _, y = next(iter(train_dataloader))
+            logger.debug(f"{y[0]}, {y[1]}, {y[2]}")
             self._nnet.train()
     
                     
