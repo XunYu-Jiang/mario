@@ -22,8 +22,7 @@ class Engine():
             optimizer.zero_grad()
 
             X = X.to(device)
-            last_reward, last_value_pred, last_reward, last_prob_pred  = X[0], X[1], X[2], X[3]
-            # action = policy_pred.sample()
+            last_reward, last_value_pred, value_pred = X[0], X[1], X[2], X[3]
 
             # think where to put
             advantage = (last_reward + gamma * value_pred) - last_value_pred
