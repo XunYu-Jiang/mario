@@ -14,27 +14,33 @@ from args import Args
 class CustomDataSet(torch.utils.data.Dataset):
     def __init__(self, replay_buffer: deque):
         # self.replay_buffer = replay_buffer
-        self.last_reward = []
-        self.last_value_pred = []
+        self.state_queue = []
+        self.reward = []
         self.value_pred = []
-        for train_example in replay_buffer:
-            for st, lw, lv, v in train_example:
-                self.last_reward.append(lw)
-                logger.debug(self.last_reward)
-                self.last_value_pred.append(lv)
-                logger.debug(len(self.last_value_pred))
-                self.value_pred.append(v)
-                logger.debug(len(self.value_pred))
-
-        logger.debug(f"{len(self.last_reward)}, {len(self.last_value_pred)}, {len(self.value_pred)}")
         
+        for train_example in replay_buffer:
+            for st, rw, vp in train_example:
+                self.state_queue.append(st)
+                self.reward.append(rw)
+                self.value_pred.append(vp)
+
+        # self.reward_stack = torch.tensor(self.reward, dtype=torch.float32, device=Args.TRAIN_ARGS["device"])
+        
+
+        
+        # self.state_queue_stack = torch.tensor(self.state_queue, dtype=torch.float32, device=Args.TRAIN_ARGS["device"])
+        # self.value_pred_stack = torch.tensor(self.value_pred, dtype=torch.float32, device=Args.TRAIN_ARGS["device"])
+        # logger.debug(f"{self.state_queue_stack.shape}, {self.value_pred_stack.shape}")
+        # logger.debug(self.reward_stack.shape)
+        # logger.debug(f"{self.state_queue_stack.device}, {self.reward_stack.device}, {self.value_pred_stack.device}")
+
         ### need optimization
 
     def __len__(self):
-        return len(self.last_reward)
+        return len(self.reward)
 
     def __getitem__(self, idx):
-        return -1, (self.last_reward[idx], self.last_value_pred[idx], self.value_pred[idx])
+        return self.state_queue[idx], (self.reward[idx], self.value_pred[idx])
 
 class ExperienceReplay:
     def __init__(self, batch_size=32, buffer_size=1000) -> None:
@@ -92,8 +98,17 @@ class ExperienceReplay:
         reward_batch = torch.tensor([replay[2] for replay in self._replay_buffer])
         
         return states_batch, action_batch, reward_batch
+def test_dataset():
+    a = torch.tensor([1, 2, 3])
+    b = torch.tensor([4, 5, 6])
+    c = torch.stack((a, b), dim=0)
+    logger.debug(c)
+    d = [1, 2, 3]
+    e = [a]
+    f = torch.tensor(e)
+    logger.debug(f)
 
-if __name__ == "__main__":
+def main():
     dq = deque(maxlen=100)
     logger.debug(dq)
 
@@ -123,4 +138,7 @@ if __name__ == "__main__":
     b = b + 1
 
     logger.debug((a, b))
+
+if __name__ == "__main__":
+    test_dataset()
 

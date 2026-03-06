@@ -17,7 +17,7 @@ from pathlib import Path
 
 # testing
 from nnet_wrapper import NNetWrapper
-from adv_actor_critic_nnet import AdvActorCriticNNet
+from q_nnet import Q_network
 from nes_py.wrappers import JoypadSpace
 import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, COMPLEX_MOVEMENT
@@ -36,10 +36,11 @@ class Coach():
         self._env.reset()
         self._nnet = nnet
         self._policy = policy
-        self.ex_replay = ExperienceReplay(batch_size=Args.NN_ARGS["batch_size"], buffer_size=Args.COACH_ARGS["buffer_size"])
+        self.ex_replay = ExperienceReplay(batch_size=Args.TRAIN_ARGS["batch_size"], buffer_size=Args.COACH_ARGS["buffer_size"])
         self._replay_buffer = self.ex_replay.get_replay_buffer()
         self.ACTION_NAMES = self._env.get_action_meanings()
-        self.DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.DEVICE = Args.TRAIN_ARGS["device"]
         logger.info(f"env action space: {self._env.action_space}")
 
         self._log_path = os.path.join(Args.FILE_ARGS["log_dir"], Args.FILE_ARGS["log_file"])
@@ -78,6 +79,7 @@ class Coach():
         Returns:
             A torch.Tensor which is a downscaled grayscale state observation with shape of (1, 240, 256) if add_batch_dim else (240,256).
         """
+        state = np.array(state).astype(np.float32)
         if add_batch_dim:
             new_state = torch.from_numpy(self._downscale_obs(state)).unsqueeze(dim=0)
         else:
@@ -147,11 +149,13 @@ class Coach():
 
     def _get_action(self, value_pred: torch.Tensor) -> int:
         # get policy and value from nnet
-        # action_idx = torch.argmax(value_pred)
-        # values_pred: torch.Tensor = torch.randint(0, 12, (1, 12))    # get qvalues from nnet
-        tmp = torch.rand(12)
+        # tmp = torch.rand(12)
+        # logger.debug(f"{value_pred.shape}")
+        # logger.debug(value_pred)
+        # logger.debug(f"{value_pred.argmax(dim=1)}")
+        # logger.debug(f"{value_pred[value_pred.argmax(dim=1)]}")
 
-        return tmp.argmax(dim=0).item()
+        return value_pred.argmax(dim=1).item()
 
     def reset_env(self) -> None:
         """
@@ -196,9 +200,17 @@ class Coach():
         while not done:
             step_count += 1
             # prob_pred: torch.Tensor = torch.tensor([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
-            with torch.no_grad():
-                value_pred = self._nnet.predict(states_queue)
+            with torch.inference_mode():
+
+                # states_queue = states_queue.to(dtype=torch.float32, device=self.DEVICE)
+
+                value_pred = self._nnet.predict(states_queue.unsqueeze(0).to(dtype=torch.float32, device=self.DEVICE))
                 action_index: int = self._get_action(value_pred)
+
+                value_pred = value_pred.squeeze(0).to(dtype=torch.float32, device="cpu")
+
+                # logger.debug(f"{value_pred.shape}, {states_queue.shape}")
+                # logger.debug(f"{value_pred.device}, {states_queue.device}")
 
                 # interact with env
                 state, reward, done, _, info = self._env.step(action_index)
@@ -213,17 +225,17 @@ class Coach():
                 with open(self._log_path, "a") as f:
                     print(f"step {step_count} at {time.strftime('%Y-%m-%d %H:%M:%S')}:\n    reward: {last_reward},\n    last_value_pred: {last_value_pred},\n    value_pred: {value_pred}\n    info: {info}", file=f)
                 
-                self_play_example.append((last_states_queue, last_reward, last_value_pred, value_pred))  #(Tensor, float, Tensor, float)
+                self_play_example.append((last_states_queue, last_reward, last_value_pred.clone()))  #(Tensor, float, Tensor)
                 
                 last_value_pred = value_pred
                 last_states_queue = states_queue
                 last_reward = reward
 
-                if step_count > 2:
+                if step_count > 30:
                     break
 
         # add last state to self_play_example with next_state_value = 0(since it is terminal state)
-        self_play_example.append((last_states_queue, last_reward, last_value_pred, value_pred))
+        self_play_example.append((last_states_queue, last_reward, last_value_pred))
         logger.debug(f"game length: {len(self_play_example)}")
 
         return self_play_example, record_frames
@@ -236,7 +248,7 @@ class Coach():
         
         # episode_example, record_frames = self._self_play()
         # logger.debug((record_frames[0].shape, len(record_frames)))
-
+        
         logger.warning("Start self play...")
 
         bar_fmt = "{desc}: |{bar}| {n_fmt}/{total_fmt} {remaining},{rate_fmt}{postfix}"
@@ -266,12 +278,13 @@ class Coach():
             
             logger.warning(f"Start training iter {iteration + 1}...")
             custom_dataset = CustomDataSet(self._replay_buffer)
-            train_dataloader = DataLoader(custom_dataset, batch_size=Args.NN_ARGS["batch_size"], shuffle=True)
-            logger.debug(train_dataloader.__iter__())
-            logger.debug(next(iter(train_dataloader)))
-            _, y = next(iter(train_dataloader))
-            logger.debug(f"{y[0]}, {y[1]}, {y[2]}")
-            self._nnet.train()
+            train_dataloader = DataLoader(custom_dataset, batch_size=Args.TRAIN_ARGS["batch_size"], shuffle=True, drop_last=True)
+
+            X, y = next(iter(train_dataloader))
+            logger.debug(f"{X.is_cuda}, {y[0].is_cuda}, {y[1].is_cuda}")
+            self._nnet.train(dataloader=train_dataloader, device=self.DEVICE)
+        
+        logger.warning("Finish training")
     
                     
 
@@ -333,11 +346,12 @@ def test_process_state():
             break
 
 def main():
-    logger.debug(logger.name)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='human')
     env = JoypadSpace(env, COMPLEX_MOVEMENT)
 
-    coach = Coach(env=env, nnet=NNetWrapper(AdvActorCriticNNet()), policy=Algorithom.Policy.episilon_greedy)
+    coach = Coach(env=env, nnet=NNetWrapper((Q_network()), device=device), policy=Algorithom.Policy.episilon_greedy)
 
     coach.reset_env()
     coach.learn()

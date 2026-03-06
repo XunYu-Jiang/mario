@@ -4,32 +4,34 @@ from typing import Tuple
 import log_setting
 logger = log_setting.MyLogging.get_root_logger()
 
-import engine
+from engine import Engine
 
 class NNetWrapper():
     def __init__(self, nnet: torch.nn.Module, device: torch.device=torch.device("cpu")) -> None:
-        self._nnet = nnet
+        # self._nnet = nnet
         self.device = device
-        self._engine = engine.Engine()
+        self._engine = Engine()
 
     def train(self, 
-              dataloader: torch.utils.data.DataLoader, 
-              loss_fn:torch.nn.Module, 
-              optimizer: torch.optim.Optimizer):
-        """"""
-        self._engine.train()
+              dataloader: torch.utils.data.DataLoader,
+              device: torch.device=torch.device("cpu")):
+        """Wrapper of engine.train()"""
+
+        self._engine.train(dataloader=dataloader, device=device)
     
     def predict(self, state_queue: torch.Tensor) -> torch.Tensor | Tuple:
-        # v_pred, p_pred = self._nnet(obs)
-
-        return torch.zeros(12)
+        return self._engine.predict(state_queue)
         
     
-    def save_checkpoint(cls, folder, filename):
+    def save_checkpoint(self, folder, filename):
         ...
 
     def load_checkpoint(self, folder, filename):
         ...
+    
+    def get_nnet_instance(self):
+        return self._nnet
+                          
 
 
 def main():

@@ -13,18 +13,18 @@ class Q_network(nn.Module):
 
         self.conv_block = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, stride=1, padding=1),
-            nn.ELU(),
+            nn.LeakyReLU(),
             nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
-            nn.ELU(),
+            nn.LeakyReLU(),
             nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
-            nn.ELU(),
+            nn.LeakyReLU(),
             nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
-            nn.ELU()
+            nn.LeakyReLU()
         )
 
         self.classifier = nn.Sequential(
             nn.Linear(in_features=32*240*256, out_features=100),
-            nn.ELU(),
+            nn.LeakyReLU(),
             nn.Linear(in_features=100, out_features=12),
             nn.Softmax(dim=1)
         )
@@ -40,7 +40,7 @@ class Q_network(nn.Module):
         x = x.flatten(start_dim=1)
         # logger.debug(x.shape)
         x = self.classifier(x)
-        # logger.debug(x)
+        # logger.debug(x.shape)
 
         return x
 

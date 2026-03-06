@@ -1,3 +1,4 @@
+import torch
 class Args:
     COACH_ARGS: dict = {
         "num_iters": 2,
@@ -15,12 +16,19 @@ class Args:
     }
 
     NN_ARGS: dict = {
-        "lr": 0.001,
         "drop_out": 0.3,
-        "epoch": 10,
-        "batch_size": 64,
         'num_channels': 64, #512
-        'num_blocks': 5
+        'num_blocks': 5,
+    }
+
+    TRAIN_ARGS: dict = {
+        "lr": 1e-3,
+        "epoch": 10,
+        "batch_size": 32,
+        'q_learning_discount': 0.9,  #discount in (last_reward + "gamma" * value_pred) - last_value_pred
+        "device": "cuda"        
+        # "device": "cpu"        
+
     }
     
     FILE_ARGS: dict = {

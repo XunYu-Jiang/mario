@@ -1,46 +1,78 @@
 from typing import Callable
+from args import Args
 import torch
+from q_nnet import Q_network
+import log_setting
+
+logger = log_setting.MyLogging.get_root_logger()
 
 class Engine():
     """
     implement detail training, evaluation, etc behavior for NNetWrapper.
     """
     def __init__(self):
-        pass 
-
+        self._nnet = Q_network().to(Args.TRAIN_ARGS["device"])
+        self.optimizer = torch.optim.Adam(self._nnet.parameters(), lr=Args.TRAIN_ARGS['lr'])
+        self.loss_fn = torch.nn.MSELoss()
     
-    def train(cls,
-              nnet: torch.nn.Module,
+    def train(self,
               dataloader: torch.utils.data.DataLoader,
-              loss_fn: Callable, 
-              optimizer: torch.optim.Optimizer,
               device: torch.device) -> None:
-        train_loss = 0
+        self._nnet.train()
 
         # seudo code
-        for batch, X in enumerate(dataloader):
-            optimizer.zero_grad()
+        for batch, (X, y) in enumerate(dataloader):
 
-            X = X.to(device)
-            last_reward, last_value_pred, value_pred = X[0], X[1], X[2], X[3]
+            self.optimizer.zero_grad()
 
-            # think where to put
-            advantage = (last_reward + gamma * value_pred) - last_value_pred
+            X = X.to(dtype=torch.float32, device=device)
+            y[0] = y[0].to(dtype=torch.float32, device=device)
+            y[1] = y[1].to(dtype=torch.float32, device=device)
 
-            actor_loss = -1 * last_prob_pred.logprob(action) * advantage
-            critic_loss = torch.pow(advantage, 2)
-            total_loss = actor_loss.sum() + discount * critic_loss.sum()
+            reward, last_value_pred = y[0].to(device), y[1].to(device)
 
-            total_loss.backward()
-            optimizer.step()
+            value_pred: torch.Tensor = self._nnet(X)
 
-        pass
+            # logger.debug(value_pred.requires_grad)
+            # logger.debug(f"{value_pred.shape}, {reward.shape}, {last_value_pred.shape}")
+
+            reward = reward.reshape(Args.TRAIN_ARGS['batch_size'], 1)
+
+            # logger.debug(f"{value_pred.shape}, {reward.shape}, {last_value_pred.shape}")
+
+            target = torch.add(reward, Args.TRAIN_ARGS['q_learning_discount'] * value_pred)
+
+            loss: torch.Tensor = self.loss_fn(last_value_pred, target)
+            loss.backward()
+            self.optimizer.step()
     
-    def evaluate(self):
-        pass
+    def predict(self, state_queue: torch.Tensor) -> torch.Tensor:
+        return self._nnet(state_queue)
 
     def get_loss_fn(self):
         pass
 
     def get_nnet_output(self):
         pass
+
+def main():
+    a = torch.randint(0, 10, size=(3,2))
+    b = torch.randint(0, 10, size=(3,))
+    logger.debug(f"a: {a}, {a.shape}")
+    logger.debug(f"b: {b}, {b.shape}")
+    b = b.reshape(3, 1)
+    logger.debug(f"b: {b}, {b.shape}")
+    tmp = []
+    c = torch.add(a, b)
+    logger.debug(f"c: {c}, {c.shape}")
+    for i in range(3):
+        c = torch.add(a, b[i])
+        tmp.append(c)
+    # for k in tmp:
+    #     if len(tmp) == 0:
+    #         break
+    #     d = torch.cat(k, k+1, dim=1)
+    #     logger.debug(f"c: {c}, {c.shape}")
+
+if __name__ == "__main__":
+    main()
