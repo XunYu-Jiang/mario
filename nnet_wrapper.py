@@ -7,17 +7,18 @@ logger = log_setting.MyLogging.get_root_logger()
 from engine import Engine
 
 class NNetWrapper():
-    def __init__(self, nnet: torch.nn.Module, device: torch.device=torch.device("cpu")) -> None:
-        # self._nnet = nnet
+    def __init__(self, nnet: torch.nn.Module, optimizer: torch.optim.Optimizer, device: torch.device=torch.device("cpu")) -> None:
+        self._nnet = nnet
+        self.optimizer = optimizer
         self.device = device
-        self._engine = Engine()
+        self._engine = Engine(nnet=self._nnet, optimizer=self.optimizer, device=self.device)
 
     def train(self, 
               dataloader: torch.utils.data.DataLoader,
               device: torch.device=torch.device("cpu")):
         """Wrapper of engine.train()"""
 
-        self._engine.train(dataloader=dataloader, device=device)
+        self._engine.train(dataloader=dataloader)
     
     def predict(self, state_queue: torch.Tensor) -> torch.Tensor | Tuple:
         return self._engine.predict(state_queue)
@@ -32,6 +33,8 @@ class NNetWrapper():
     def get_nnet_instance(self):
         return self._nnet
                           
+    def get_loss(self):
+        return self._engine.get_loss()
 
 
 def main():

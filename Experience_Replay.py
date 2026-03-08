@@ -44,8 +44,8 @@ class CustomDataSet(torch.utils.data.Dataset):
 
 class ExperienceReplay:
     def __init__(self, batch_size=32, buffer_size=1000) -> None:
-        self._batch_size = Args.EX_REPLAY["batch_size"]
-        self._replay_buffer_size = Args.EX_REPLAY["buffer_size"]
+        self._batch_size = Args.TRAIN_ARGS["batch_size"]
+        self._replay_buffer_size = Args.TRAIN_ARGS["buffer_size"]
         self._replay_buffer: deque = deque(maxlen=buffer_size)
 
     def get_replay_buffer(self) -> deque:

@@ -6,6 +6,8 @@ logger = log_setting.MyLogging.get_root_logger()
 import numpy as np
 from typing import Tuple, Callable, List, Dict
 import torch
+from torch.utils.tensorboard import SummaryWriter
+
 import time
 from algorithm import Algorithom
 from args import Args
@@ -30,17 +32,29 @@ from torch.utils.data import DataLoader
 
 # Use tqdm.write instead of print to avoid progress bar breaks
 
+
+def count_time(func: Callable) -> None:
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        self_play_ex, record_frames = func(*args, **kwargs)
+        end = time.time()
+        logger.info(f"Count {func.__name__}() Time: {end - start:.2f}")
+        return self_play_ex, record_frames
+    return wrapper
+
 class Coach():
     def __init__(self, env: gym.Env, nnet: NNetWrapper, policy: Callable) -> None:
         self._env = env
         self._env.reset()
         self._nnet = nnet
+        self._optimizer = torch.optim.Adam(self._nnet.get_nnet_instance().parameters(), lr=Args.TRAIN_ARGS['lr'])
         self._policy = policy
-        self.ex_replay = ExperienceReplay(batch_size=Args.TRAIN_ARGS["batch_size"], buffer_size=Args.COACH_ARGS["buffer_size"])
+        self.ex_replay = ExperienceReplay(batch_size=Args.TRAIN_ARGS["batch_size"], buffer_size=Args.TRAIN_ARGS["buffer_size"])
         self._replay_buffer = self.ex_replay.get_replay_buffer()
         self.ACTION_NAMES = self._env.get_action_meanings()
         # self.DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.DEVICE = Args.TRAIN_ARGS["device"]
+
         logger.info(f"env action space: {self._env.action_space}")
 
         self._log_path = os.path.join(Args.FILE_ARGS["log_dir"], Args.FILE_ARGS["log_file"])
@@ -51,6 +65,7 @@ class Coach():
             os.mkdir(Args.FILE_ARGS["log_dir"])
         
 
+    
     def _downscale_obs(self, obs: np.ndarray, new_size: Tuple=(240, 256), to_gray: bool=True) -> np.ndarray:
         """
         downscale observation to grayscale.
@@ -139,23 +154,18 @@ class Coach():
 
         raise NotImplementedError
         return value_next_pred
-        
 
-    def _get_dataloader(self):
-        """
-        create dataloader from replay buffer
-        """
-        raise NotImplementedError
-
-    def _get_action(self, value_pred: torch.Tensor) -> int:
+    def _get_action(self, value_pred: torch.Tensor, policy: Callable) -> int:
         # get policy and value from nnet
         # tmp = torch.rand(12)
         # logger.debug(f"{value_pred.shape}")
         # logger.debug(value_pred)
         # logger.debug(f"{value_pred.argmax(dim=1)}")
         # logger.debug(f"{value_pred[value_pred.argmax(dim=1)]}")
+        act_idx = policy(value_pred, eps=0.3)
 
-        return value_pred.argmax(dim=1).item()
+        return act_idx
+        # return value_pred.argmax(dim=1).item()
 
     def reset_env(self) -> None:
         """
@@ -163,8 +173,7 @@ class Coach():
         """
         self._env.reset()
 
-    # def record_play(self, record_frames: List[np.ndarray], record_dir: Path | str):
-
+    @count_time
     def _self_play(self) -> Tuple[List[Tuple[torch.Tensor,int, float, Dict]], List[np.ndarray]]:
         """
         Perform one episode of self-play.
@@ -205,7 +214,7 @@ class Coach():
                 # states_queue = states_queue.to(dtype=torch.float32, device=self.DEVICE)
 
                 value_pred = self._nnet.predict(states_queue.unsqueeze(0).to(dtype=torch.float32, device=self.DEVICE))
-                action_index: int = self._get_action(value_pred)
+                action_index: int = self._get_action(value_pred, policy=self._policy)
 
                 value_pred = value_pred.squeeze(0).to(dtype=torch.float32, device="cpu")
 
@@ -222,10 +231,10 @@ class Coach():
                 states_queue = self._prepare_multi_state(states_queue, state.copy())
                 self._env.render()
 
-                with open(self._log_path, "a") as f:
-                    print(f"step {step_count} at {time.strftime('%Y-%m-%d %H:%M:%S')}:\n    reward: {last_reward},\n    last_value_pred: {last_value_pred},\n    value_pred: {value_pred}\n    info: {info}", file=f)
+                # with open(self._log_path, "a") as f:
+                #     print(f"step {step_count} at {time.strftime('%Y-%m-%d %H:%M:%S')}:\n    reward: {last_reward},\n    last_value_pred: {last_value_pred},\n    value_pred: {value_pred}\n    info: {info}", file=f)
                 
-                self_play_example.append((last_states_queue, last_reward, last_value_pred.clone()))  #(Tensor, float, Tensor)
+                self_play_example.append((last_states_queue, last_reward, last_value_pred.clone().detach()))  #(Tensor, float, Tensor)
                 
                 last_value_pred = value_pred
                 last_states_queue = states_queue
@@ -236,7 +245,7 @@ class Coach():
 
         # add last state to self_play_example with next_state_value = 0(since it is terminal state)
         self_play_example.append((last_states_queue, last_reward, last_value_pred))
-        logger.debug(f"game length: {len(self_play_example)}")
+        # logger.debug(f"game length: {len(self_play_example)}")
 
         return self_play_example, record_frames
 
@@ -252,38 +261,64 @@ class Coach():
         logger.warning("Start self play...")
 
         bar_fmt = "{desc}: |{bar}| {n_fmt}/{total_fmt} {remaining},{rate_fmt}{postfix}"
+        
+        logger.debug(f"Is Multiprocess: {Args.COACH_ARGS['is_multiprocess']}")
 
         # for every iteration
-        for iteration in trange(self.num_iters,  desc="Iteration", colour="blue", bar_format=bar_fmt):
+        for epoch in trange(self.num_iters,  desc="Epoch", colour="blue", bar_format=bar_fmt):
             # for every self-play
             for episode in trange(self.num_episodes, desc="Self Play", leave=False, colour="cyan", bar_format=bar_fmt):
                 
-                self_play_example, record_frames = self._self_play()
+                
+                if not Args.COACH_ARGS["is_multiprocess"]:
+                    self_play_example, record_frames = self._self_play()
                 # one self play ended, save video and records to experience replay
+
+                else:
+                    pass
 
                 save_video(
                     frames=record_frames,
-                    video_folder="./temp",
-                    name_prefix="test",
+                    video_folder=Path(Args.FILE_ARGS["vod_dir"]),
+                    name_prefix="train",
                     fps=self._env.metadata["video.frames_per_second"],
                     episode_trigger=lambda x: True,
                     # step_trigger=lambda x : True,
                     # step_starting_index=step_starting_index,
-                    episode_index=f"{iteration + 1}-{episode + 1}"
+                    episode_index=f"{epoch + 1}-{episode + 1}"
                 )
 
                 self.ex_replay.add_replay(self_play_example)
-            
+            ### ----------------------------end of self play-------------------------------
+
             # get replay into dataset and dataloader...
-            
-            logger.warning(f"Start training iter {iteration + 1}...")
             custom_dataset = CustomDataSet(self._replay_buffer)
             train_dataloader = DataLoader(custom_dataset, batch_size=Args.TRAIN_ARGS["batch_size"], shuffle=True, drop_last=True)
 
-            X, y = next(iter(train_dataloader))
-            logger.debug(f"{X.is_cuda}, {y[0].is_cuda}, {y[1].is_cuda}")
+            # logger.debug(len(train_dataloader))
             self._nnet.train(dataloader=train_dataloader, device=self.DEVICE)
-        
+
+            #get loss from engine.py
+            batch_lose = self._nnet.get_loss()            
+            batch_lose = torch.tensor(batch_lose)
+
+            # logger.debug(batch_lose.shape)
+
+            mean_lose = torch.mean(batch_lose)
+
+
+            if (episode % 5) == 0:
+                torch.save({
+                    "epoch": epoch+1,
+                    "model_state_dict": self._nnet.get_nnet_instance().state_dict(),
+                    "optimizer_state_dict": self._optimizer.state_dict(),
+                }, f"{Args.FILE_ARGS['model_dir']}checkpoint_{epoch+1}.ptr")
+            
+            writer = SummaryWriter(log_dir=os.path.join(Args.FILE_ARGS["log_dir"], "losses"))
+            writer.add_scalars(main_tag="Losses",
+                               tag_scalar_dict={"mean_lose": np.array(mean_lose)},
+                               global_step=epoch)
+
         logger.warning("Finish training")
     
                     
@@ -351,7 +386,11 @@ def main():
     env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='human')
     env = JoypadSpace(env, COMPLEX_MOVEMENT)
 
-    coach = Coach(env=env, nnet=NNetWrapper((Q_network()), device=device), policy=Algorithom.Policy.episilon_greedy)
+    nnet = Q_network()
+    optimizer = torch.optim.Adam(nnet.parameters(), lr=Args.TRAIN_ARGS["lr"])
+    nnet_wrap = NNetWrapper(nnet=nnet, optimizer=optimizer, device=device)
+    
+    coach = Coach(env=env, nnet=nnet_wrap, policy=Algorithom.Policy.episilon_greedy)
 
     coach.reset_env()
     coach.learn()

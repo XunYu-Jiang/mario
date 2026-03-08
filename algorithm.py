@@ -48,7 +48,7 @@ class Algorithom:
 
 
         @staticmethod
-        def episilon_greedy(input: torch.Tensor, eps: float=0.):
+        def episilon_greedy(value_pred: torch.Tensor, eps: float=0.3):
             """
             select the action according to the softmaxed qvalues in action space, and choose one action according to it's probability. (why normalized??????)
 
@@ -57,14 +57,14 @@ class Algorithom:
                 eps (float): epsilon for epsilon-greedy policy, if None, then return the action with the highest qvalue.
             
             Returns:
-                A torch.Tensor which is an action in action space.
+                act_idx (int): an action index in action space according to value_pred.
             """
             # using epsilon-greedy
             if eps != 0:
                 if torch.rand(1) < eps:
-                    return torch.randint(low=0, high=7, size=(1,))
+                    return torch.randint(low=0, high=7, size=(1,)).item()
                 else:
-                    return torch.argmax(input)
+                    return value_pred.argmax(dim=1).item()
             
             # not using epsilon-greedy
             # choose qvalue action according to it's normalized qvalue probability
