@@ -6,6 +6,8 @@ logger = log_setting.MyLogging.get_root_logger()
 import numpy as np
 from typing import Tuple, Callable, List, Dict
 import torch
+# import torchvision.transforms.v2 as v2
+from torchvision.transforms import functional as F
 from torch.utils.tensorboard import SummaryWriter
 
 import time
@@ -97,9 +99,13 @@ class Coach():
         state = np.array(state).astype(np.float32)
         if add_batch_dim:
             new_state = torch.from_numpy(self._downscale_obs(state)).unsqueeze(dim=0)
+            new_state = F.resize(new_state, (1, 64, 64))
         else:
             new_state = torch.from_numpy(self._downscale_obs(state))
-
+            # logger.debug(new_state.unsqueeze(dim=0).shape)
+            new_state = F.resize(new_state.unsqueeze(dim=0), (64, 64))
+            new_state = new_state.squeeze(dim=0)
+        # logger.debug(new_state.shape)
         return new_state
 
 
@@ -203,8 +209,8 @@ class Coach():
 
 
         # start logging self-play imformation
-        with open (self._log_path, "a") as f:
-            print("-"*150, file=f)
+        # with open (self._log_path, "a") as f:
+        #     print("-"*150, file=f)
 
         while not done:
             step_count += 1
@@ -240,7 +246,7 @@ class Coach():
                 last_states_queue = states_queue
                 last_reward = reward
 
-                if step_count > 30:
+                if step_count > 62:
                     break
 
         # add last state to self_play_example with next_state_value = 0(since it is terminal state)

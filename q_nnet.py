@@ -23,7 +23,7 @@ class Q_network(nn.Module):
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(in_features=32*240*256, out_features=100),
+            nn.Linear(in_features=32*64*64, out_features=100),
             nn.LeakyReLU(),
             nn.Linear(in_features=100, out_features=12),
             nn.Softmax(dim=1)

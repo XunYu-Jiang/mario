@@ -2,7 +2,7 @@ import torch
 class Args:
     COACH_ARGS: dict = {
         "num_iters": 2,
-        "num_episodes": 5,
+        "num_episodes": 3,
         "is_multiprocess": False,   
         'tempThreshold': 12 #12 # 前 n 步 不一定挑最好的走步
     }

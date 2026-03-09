@@ -12,6 +12,10 @@ from coach import Coach
 from nnet_wrapper import NNetWrapper
 from adv_actor_critic_nnet import AdvActorCriticNNet
 from algorithm import Algorithom
+from q_nnet import Q_network
+from args import Args
+
+import torch
 
 import contextlib
 import inspect
@@ -39,9 +43,18 @@ def print_redirect_tqdm():
 def main():
 
     with logging_redirect_tqdm(), print_redirect_tqdm():
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='human')
         env = JoypadSpace(env, COMPLEX_MOVEMENT)
-        coach = Coach(env=env, nnet=NNetWrapper(AdvActorCriticNNet()), policy=Algorithom.Policy.episilon_greedy)
+
+        nnet = Q_network()
+        optimizer = torch.optim.Adam(nnet.parameters(), lr=Args.TRAIN_ARGS["lr"])
+        nnet_wrap = NNetWrapper(nnet=nnet, optimizer=optimizer, device=device)
+        
+        coach = Coach(env=env, nnet=nnet_wrap, policy=Algorithom.Policy.episilon_greedy)
+
+        coach.reset_env()
         coach.learn()
     
 
