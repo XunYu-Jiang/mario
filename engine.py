@@ -23,20 +23,21 @@ class Engine():
         # seudo code
         for batch, (X, y) in enumerate(dataloader):
 
+            # logger.debug(f"{X.shape}, {y[0].shape}, {y[1].shape}")
             self.optimizer.zero_grad()
 
             X = X.to(dtype=torch.float32, device=self.device)
             y[0] = y[0].to(dtype=torch.float32, device=self.device)
             y[1] = y[1].to(dtype=torch.float32, device=self.device)
 
-            reward, last_value_pred = y[0].to(self.device), y[1].to(self.device)
+            reward, last_value_pred = y[0], y[1]
 
             value_pred: torch.Tensor = self._nnet(X)
 
             # logger.debug(value_pred.requires_grad)
             # logger.debug(f"{value_pred.shape}, {reward.shape}, {last_value_pred.shape}")
 
-            reward = reward.reshape(Args.TRAIN_ARGS['batch_size'], 1)
+            # reward = reward.reshape(Args.TRAIN_ARGS['batch_size'], 1)
 
             # logger.debug(f"{value_pred.shape}, {reward.shape}, {last_value_pred.shape}")
 

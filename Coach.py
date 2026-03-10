@@ -15,6 +15,8 @@ from algorithm import Algorithom
 from args import Args
 import os
 import copy
+import multiprocessing
+from multiprocessing import Pool
 
 from experience_replay import ExperienceReplay, CustomDataSet
 from pathlib import Path
@@ -81,6 +83,7 @@ class Coach():
             np.ndarray: downscaled grayscale observation with ndarray and shape of (240, 256).
         """
         gray = np.dot(obs[:,:,0:3], [0.2989, 0.5870, 0.1140]) / 256
+        
         # gray = skimage.color.rgb2gray(obs)
 
         return gray if to_gray else obs
@@ -97,6 +100,7 @@ class Coach():
             A torch.Tensor which is a downscaled grayscale state observation with shape of (1, 240, 256) if add_batch_dim else (240,256).
         """
         state = np.array(state).astype(np.float32)
+
         if add_batch_dim:
             new_state = torch.from_numpy(self._downscale_obs(state)).unsqueeze(dim=0)
             new_state = F.resize(new_state, (1, 64, 64))
@@ -179,7 +183,7 @@ class Coach():
         """
         self._env.reset()
 
-    @count_time
+    # @count_time
     def _self_play(self) -> Tuple[List[Tuple[torch.Tensor,int, float, Dict]], List[np.ndarray]]:
         """
         Perform one episode of self-play.
@@ -193,8 +197,7 @@ class Coach():
 
         #initialize data
         last_reward = 0.
-        last_value_pred = torch.zeros(12)
-        
+        last_value_pred = torch.zeros((1, 12))
         self_play_example = []
         record_frames = []
         
@@ -206,7 +209,6 @@ class Coach():
         # downscale state to grayscale and turn it into format of nnet input (240, 256, 3) -> (240, 256) -> (3, 240, 256)
         states_queue: torch.Tensor = self._prepare_initial_state(state.copy(), add_batch_dim=False)
         last_states_queue: torch.Tensor = states_queue.clone().detach()
-
 
         # start logging self-play imformation
         # with open (self._log_path, "a") as f:
@@ -222,7 +224,11 @@ class Coach():
                 value_pred = self._nnet.predict(states_queue.unsqueeze(0).to(dtype=torch.float32, device=self.DEVICE))
                 action_index: int = self._get_action(value_pred, policy=self._policy)
 
-                value_pred = value_pred.squeeze(0).to(dtype=torch.float32, device="cpu")
+                # logger.debug(value_pred.shape)
+                # if value_pred.shape != (1, 12):
+                #     logger.error("invalid shape")
+                #     break
+                # value_pred = value_pred.squeeze(0).to(dtype=torch.float32, device="cpu")
 
                 # logger.debug(f"{value_pred.shape}, {states_queue.shape}")
                 # logger.debug(f"{value_pred.device}, {states_queue.device}")
@@ -239,18 +245,18 @@ class Coach():
 
                 # with open(self._log_path, "a") as f:
                 #     print(f"step {step_count} at {time.strftime('%Y-%m-%d %H:%M:%S')}:\n    reward: {last_reward},\n    last_value_pred: {last_value_pred},\n    value_pred: {value_pred}\n    info: {info}", file=f)
-                
-                self_play_example.append((last_states_queue, last_reward, last_value_pred.clone().detach()))  #(Tensor, float, Tensor)
+
+                self_play_example.append((last_states_queue, last_reward, last_value_pred.clone().detach().squeeze(0)))  #(Tensor, float, Tensor)
                 
                 last_value_pred = value_pred
                 last_states_queue = states_queue
                 last_reward = reward
 
-                if step_count > 62:
-                    break
+                # if step_count > 62:
+                #     break
 
         # add last state to self_play_example with next_state_value = 0(since it is terminal state)
-        self_play_example.append((last_states_queue, last_reward, last_value_pred))
+        self_play_example.append((last_states_queue, last_reward, last_value_pred.clone().detach().squeeze(0)))
         # logger.debug(f"game length: {len(self_play_example)}")
 
         return self_play_example, record_frames
@@ -286,12 +292,12 @@ class Coach():
                 save_video(
                     frames=record_frames,
                     video_folder=Path(Args.FILE_ARGS["vod_dir"]),
-                    name_prefix="train",
+                    name_prefix=f"epoch-{epoch + 1}",
                     fps=self._env.metadata["video.frames_per_second"],
-                    episode_trigger=lambda x: True,
+                    episode_trigger=lambda x: x % 5 == 0,
                     # step_trigger=lambda x : True,
                     # step_starting_index=step_starting_index,
-                    episode_index=f"{epoch + 1}-{episode + 1}"
+                    episode_index=episode + 1
                 )
 
                 self.ex_replay.add_replay(self_play_example)
@@ -302,6 +308,8 @@ class Coach():
             train_dataloader = DataLoader(custom_dataset, batch_size=Args.TRAIN_ARGS["batch_size"], shuffle=True, drop_last=True)
 
             # logger.debug(len(train_dataloader))
+            # stq, (rw, vp) = next(iter(train_dataloader))
+            # logger.debug(f"{stq.shape}, {rw.shape}, {vp.shape}")
             self._nnet.train(dataloader=train_dataloader, device=self.DEVICE)
 
             #get loss from engine.py
@@ -313,12 +321,12 @@ class Coach():
             mean_lose = torch.mean(batch_lose)
 
 
-            if (episode % 5) == 0:
+            if (epoch % 5) == 0:
                 torch.save({
                     "epoch": epoch+1,
                     "model_state_dict": self._nnet.get_nnet_instance().state_dict(),
                     "optimizer_state_dict": self._optimizer.state_dict(),
-                }, f"{Args.FILE_ARGS['model_dir']}checkpoint_{epoch+1}.ptr")
+                }, f"{Args.FILE_ARGS['model_dir']}checkpoint_{epoch+5}.ptr")
             
             writer = SummaryWriter(log_dir=os.path.join(Args.FILE_ARGS["log_dir"], "losses"))
             writer.add_scalars(main_tag="Losses",
@@ -386,6 +394,37 @@ def test_process_state():
         if step_count > 30:
             break
 
+def sleep(second):
+    start = time.time()
+    time.sleep(second)
+    end = time.time()
+    logger.debug(f"sleep {second} seconds")
+    duration = end - start
+    logger.debug(f"sleep time: {duration}")
+    return second
+
+def test_multiprocess():
+    # logger.debug(multiprocessing.cpu_count())
+    # with Pool(multiprocessing.cpu_count()) as pool:
+    #     result = pool.map(sleep, ([1, 1, 1, 1, 1]))
+    
+    # logger.debug(result)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='human')
+    env = JoypadSpace(env, COMPLEX_MOVEMENT)
+
+    nnet = Q_network()
+    optimizer = torch.optim.Adam(nnet.parameters(), lr=Args.TRAIN_ARGS["lr"])
+    nnet_wrap = NNetWrapper(nnet=nnet, optimizer=optimizer, device=device)
+    
+    coach = Coach(env=env, nnet=nnet_wrap, policy=Algorithom.Policy.episilon_greedy)
+
+    coach.reset_env()
+    with Pool(multiprocessing.cpu_count()) as pool:
+        result = pool.map(coach._self_play, ())
+    logger.debug(result)
+
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -404,6 +443,9 @@ def main():
 
 if __name__ == "__main__":
     # test_process_state()
+    # test_multiprocess()
+    
+        
     main()
 
 

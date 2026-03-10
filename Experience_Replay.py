@@ -18,14 +18,22 @@ class CustomDataSet(torch.utils.data.Dataset):
         self.reward = []
         self.value_pred = []
         
+        
+
         for train_example in replay_buffer:
             for st, rw, vp in train_example:
+                rw = torch.tensor(rw, dtype=torch.float32, device=Args.TRAIN_ARGS["device"]).unsqueeze(0)
+                st = st.to(dtype=torch.float32, device=Args.TRAIN_ARGS["device"])
+                vp = vp.to(dtype=torch.float32, device=Args.TRAIN_ARGS["device"]).squeeze(0)
+
                 self.state_queue.append(st)
                 self.reward.append(rw)
                 self.value_pred.append(vp)
 
+                # logger.debug(f"{st.shape}, {rw.shape}, {vp.shape}")
+        logger.warning("CustomDataSet init done")
         # self.reward_stack = torch.tensor(self.reward, dtype=torch.float32, device=Args.TRAIN_ARGS["device"])
-        
+        # logger.debug(self.reward_stack.shape)
 
         
         # self.state_queue_stack = torch.tensor(self.state_queue, dtype=torch.float32, device=Args.TRAIN_ARGS["device"])
