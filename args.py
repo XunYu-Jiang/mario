@@ -16,7 +16,7 @@ class Args:
     TRAIN_ARGS: dict = {
         "lr": 1e-3,
         "batch_size": 32,
-        "buffer_size": 500,
+        "buffer_size": 250,
         'q_learning_discount': 0.9,  #discount in (last_reward + "gamma" * value_pred) - last_value_pred
         "device": "cuda"        
         # "device": "cpu"        

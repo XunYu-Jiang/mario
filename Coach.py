@@ -294,13 +294,14 @@ class Coach():
                     video_folder=Path(Args.FILE_ARGS["vod_dir"]),
                     name_prefix=f"epoch-{epoch + 1}",
                     fps=self._env.metadata["video.frames_per_second"],
-                    episode_trigger=lambda x: x % 5 == 0,
+                    episode_trigger=lambda x: x % 20 == 0,
                     # step_trigger=lambda x : True,
                     # step_starting_index=step_starting_index,
                     episode_index=episode + 1
                 )
 
-                self.ex_replay.add_replay(self_play_example)
+                del record_frames
+                self.ex_replay.add_replay(copy.deepcopy(self_play_example))
             ### ----------------------------end of self play-------------------------------
 
             # get replay into dataset and dataloader...
