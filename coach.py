@@ -82,9 +82,10 @@ class Coach():
         Returns:
             np.ndarray: downscaled grayscale observation with ndarray and shape of (240, 256).
         """
-        gray = np.dot(obs[:,:,0:3], [0.2989, 0.5870, 0.1140]) / 256
-        
-        # gray = skimage.color.rgb2gray(obs)
+
+        #create a new ndarray in grayscale that do not share memory
+        gray = np.dot(obs[:,:,0:3], [0.2989, 0.5870, 0.1140]) / 256 
+        # logger.debug(np.shares_memory(gray, obs))
 
         return gray if to_gray else obs
 
@@ -99,17 +100,30 @@ class Coach():
         Returns:
             A torch.Tensor which is a downscaled grayscale state observation with shape of (1, 240, 256) if add_batch_dim else (240,256).
         """
-        state = np.array(state).astype(np.float32)
+        #np.array() create a new ndarray with it's own copy of the data in memory
+        new_state = np.array(state).astype(np.float32)
+        # logger.debug(np.shares_memory(new_state, state))
+        
+        # downscale_obs create a new ndarray in grayscale that do not share memory
+        gray_state = self._downscale_obs(new_state)
+        del new_state
 
         if add_batch_dim:
-            new_state = torch.from_numpy(self._downscale_obs(state)).unsqueeze(dim=0)
-            new_state = F.resize(new_state, (1, 64, 64))
+            # from_numpy and unsqueeze share the same memory
+            new_state = torch.from_numpy(gray_state).unsqueeze(dim=0)
+            new_state = F.resize(new_state, (1, 64, 64))    #error
         else:
-            new_state = torch.from_numpy(self._downscale_obs(state))
-            # logger.debug(new_state.unsqueeze(dim=0).shape)
-            new_state = F.resize(new_state.unsqueeze(dim=0), (64, 64))
-            new_state = new_state.squeeze(dim=0)
-        # logger.debug(new_state.shape)
+            # from_numpy and unsqueeze share the same memory
+            new_state = torch.from_numpy(gray_state).unsqueeze(dim=0)
+            
+            new_state = F.resize(new_state, (64, 64))
+
+        new_state = new_state.squeeze(dim=0)
+        
+        # new_state and gray_state share the same memory, no need to keep two pointer
+        del gray_state
+        # logger.debug(new_state)
+        
         return new_state
 
 
@@ -124,9 +138,10 @@ class Coach():
             A torch.Tensor which is a downscaled grayscale state observation with (batch, 3 observations, height, width) or (3 observations, height, width).
         """
         gray_state = self._prepare_state(init_state, add_batch_dim=False)
-        duplicate_states = gray_state.repeat(3, 1, 1)
+        # repeat will create a new copy of state, but we asign it to og gray_state. so it's fine.
+        gray_state = gray_state.repeat(3, 1, 1)
 
-        return duplicate_states.unsqueeze(dim=0) if add_batch_dim else duplicate_states
+        return gray_state.unsqueeze(dim=0) if add_batch_dim else gray_state
 
 
 
@@ -147,6 +162,7 @@ class Coach():
         states_queue[0] = states_queue[1]
         states_queue[1] = states_queue[2]
         states_queue[2] = new_gray_state
+        del new_gray_state
 
         return states_queue
 
@@ -206,8 +222,9 @@ class Coach():
         step_count: int = 0
 
         record_frames.append(state.copy())
+
         # downscale state to grayscale and turn it into format of nnet input (240, 256, 3) -> (240, 256) -> (3, 240, 256)
-        states_queue: torch.Tensor = self._prepare_initial_state(state.copy(), add_batch_dim=False)
+        states_queue: torch.Tensor = self._prepare_initial_state(state, add_batch_dim=False)    # prepare_state return a new ndarray, no need to copy state here
         last_states_queue: torch.Tensor = states_queue.clone().detach()
 
         # start logging self-play imformation
@@ -216,6 +233,7 @@ class Coach():
 
         while not done:
             step_count += 1
+            self._nnet.get_nnet_instance().eval()
             # prob_pred: torch.Tensor = torch.tensor([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
             with torch.inference_mode():
 
@@ -224,15 +242,6 @@ class Coach():
                 value_pred = self._nnet.predict(states_queue.unsqueeze(0).to(dtype=torch.float32, device=self.DEVICE))
                 action_index: int = self._get_action(value_pred, policy=self._policy)
 
-                # logger.debug(value_pred.shape)
-                # if value_pred.shape != (1, 12):
-                #     logger.error("invalid shape")
-                #     break
-                # value_pred = value_pred.squeeze(0).to(dtype=torch.float32, device="cpu")
-
-                # logger.debug(f"{value_pred.shape}, {states_queue.shape}")
-                # logger.debug(f"{value_pred.device}, {states_queue.device}")
-
                 # interact with env
                 state, reward, done, _, info = self._env.step(action_index)
                 
@@ -240,13 +249,15 @@ class Coach():
                 record_frames.append(state.copy())
                 
                 # get a new copy of tensor_queue every time
-                states_queue = self._prepare_multi_state(states_queue, state.copy())
+                # prepare_state will create a new copy of state, and it doesn't change og state
+                # states_queue will be cloned in prepare_multi_state
+                states_queue = self._prepare_multi_state(states_queue, state)
                 self._env.render()
 
                 # with open(self._log_path, "a") as f:
                 #     print(f"step {step_count} at {time.strftime('%Y-%m-%d %H:%M:%S')}:\n    reward: {last_reward},\n    last_value_pred: {last_value_pred},\n    value_pred: {value_pred}\n    info: {info}", file=f)
 
-                self_play_example.append((last_states_queue, last_reward, last_value_pred.clone().detach().squeeze(0)))  #(Tensor, float, Tensor)
+                self_play_example.append((last_states_queue.clone().detach(), last_reward, last_value_pred.clone().detach().squeeze(0)))  #(Tensor, float, Tensor)
                 
                 last_value_pred = value_pred
                 last_states_queue = states_queue
@@ -256,7 +267,7 @@ class Coach():
                 #     break
 
         # add last state to self_play_example with next_state_value = 0(since it is terminal state)
-        self_play_example.append((last_states_queue, last_reward, last_value_pred.clone().detach().squeeze(0)))
+        self_play_example.append((last_states_queue.clone().detach(), last_reward, last_value_pred.clone().detach().squeeze(0)))
         # logger.debug(f"game length: {len(self_play_example)}")
 
         return self_play_example, record_frames
@@ -300,8 +311,9 @@ class Coach():
                     episode_index=episode + 1
                 )
 
-                del record_frames
                 self.ex_replay.add_replay(copy.deepcopy(self_play_example))
+                del record_frames, self_play_example
+
             ### ----------------------------end of self play-------------------------------
 
             # get replay into dataset and dataloader...
@@ -311,7 +323,9 @@ class Coach():
             # logger.debug(len(train_dataloader))
             # stq, (rw, vp) = next(iter(train_dataloader))
             # logger.debug(f"{stq.shape}, {rw.shape}, {vp.shape}")
+            logger.warning("start training nnet...")
             self._nnet.train(dataloader=train_dataloader, device=self.DEVICE)
+            logger.warning("Finish training nnet...")
 
             #get loss from engine.py
             batch_lose = self._nnet.get_loss()            
@@ -320,7 +334,6 @@ class Coach():
             # logger.debug(batch_lose.shape)
 
             mean_lose = torch.mean(batch_lose)
-
 
             if (epoch % 5) == 0:
                 torch.save({
@@ -334,7 +347,6 @@ class Coach():
                                tag_scalar_dict={"mean_lose": np.array(mean_lose)},
                                global_step=epoch)
 
-        logger.warning("Finish training")
     
                     
 
