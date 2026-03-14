@@ -54,6 +54,7 @@ def main():
         
         coach = Coach(env=env, nnet=nnet_wrap, policy=Algorithom.Policy.episilon_greedy)
 
+        logger.warning(f"Using device: {device}...")
         coach.reset_env()
         coach.learn()
     

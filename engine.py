@@ -3,6 +3,7 @@ from args import Args
 import torch
 from q_nnet import Q_network
 import log_setting
+import gc
 
 logger = log_setting.MyLogging.get_root_logger()
 
@@ -22,7 +23,7 @@ class Engine():
         self.all_loses = []
         # seudo code
         for batch, (X, y) in enumerate(dataloader):
-
+            # logger.warning(f"start batch {batch+1}")
             # logger.debug(f"{X.shape}, {y[0].shape}, {y[1].shape}")
             self.optimizer.zero_grad()
 
@@ -52,6 +53,9 @@ class Engine():
 
             loss.backward()
             self.optimizer.step()
+            # logger.warning(f"end batch {batch+1}")
+        logger.warning("End training nnet.")
+
     
     def predict(self, state_queue: torch.Tensor) -> torch.Tensor:
         return self._nnet(state_queue)

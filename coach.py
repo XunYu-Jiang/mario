@@ -20,6 +20,7 @@ from multiprocessing import Pool
 
 from experience_replay import ExperienceReplay, CustomDataSet
 from pathlib import Path
+import gc
 
 # testing
 from nnet_wrapper import NNetWrapper
@@ -298,21 +299,23 @@ class Coach():
                 # one self play ended, save video and records to experience replay
 
                 else:
-                    pass
+                    raise NotImplementedError
 
                 save_video(
                     frames=record_frames,
                     video_folder=Path(Args.FILE_ARGS["vod_dir"]),
                     name_prefix=f"epoch-{epoch + 1}",
                     fps=self._env.metadata["video.frames_per_second"],
-                    episode_trigger=lambda x: x % 10 == 0,
+                    episode_trigger=lambda x: x % 5 == 0,
                     # step_trigger=lambda x : True,
                     # step_starting_index=step_starting_index,
                     episode_index=episode + 1
                 )
-
-                self.ex_replay.add_replay(copy.deepcopy(self_play_example))
+                for (st, rw, vp) in self_play_example:
+                    self.ex_replay.add_replay((st, rw, vp))
                 del record_frames, self_play_example
+                gc.collect()
+                
 
             ### ----------------------------end of self play-------------------------------
 
@@ -335,7 +338,7 @@ class Coach():
 
             mean_lose = torch.mean(batch_lose)
 
-            if (epoch % 5) == 0:
+            if (epoch % 5) == 0 and epoch != 0:
                 torch.save({
                     "epoch": epoch+1,
                     "model_state_dict": self._nnet.get_nnet_instance().state_dict(),
