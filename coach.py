@@ -54,6 +54,8 @@ class Coach():
         self._nnet = nnet
         self._target_nnet = target_nnet
 
+        self .episilon = Args.TRAIN_ARGS["episilon"]
+
         self._optimizer = torch.optim.Adam(self._nnet.get_nnet_instance().parameters(), lr=Args.TRAIN_ARGS['lr'])
         self._policy = policy
         self.ex_replay = ExperienceReplay(batch_size=Args.TRAIN_ARGS["batch_size"], buffer_size=Args.TRAIN_ARGS["buffer_size"])
@@ -193,7 +195,7 @@ class Coach():
         # logger.debug(value_pred)
         # logger.debug(f"{value_pred.argmax(dim=1)}")
         # logger.debug(f"{value_pred[value_pred.argmax(dim=1)]}")
-        act_idx = policy(value_pred, eps=Args.TRAIN_ARGS["episilon"])
+        act_idx = policy(value_pred, eps=self.episilon)
 
         return act_idx
         # return value_pred.argmax(dim=1).item()
@@ -325,7 +327,7 @@ class Coach():
                 gc.collect()
             
 
-                
+              
 
             ### ----------------------------end of self play-------------------------------
 
@@ -364,6 +366,12 @@ class Coach():
             writer.add_scalars(main_tag="Losses",
                                tag_scalar_dict={"mean_lose": np.array(mean_lose)},
                                global_step=epoch)
+            
+            if (epoch % 10) == 0 and epoch != 0:
+                self.episilon = self.episilon * 0.99
+                if self.episilon < 0.3:
+                    self.episilon = 0.3
+            logger.debug(f"episilon: {self.episilon}")
 
     
                     
