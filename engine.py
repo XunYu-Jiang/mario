@@ -18,9 +18,16 @@ class Engine():
         self.device = device
         self.all_loses = []
     
-    def train(self, dataloader: torch.utils.data.DataLoader) -> None:
-        self._nnet.train()
+    def train(self, dataloader: torch.utils.data.DataLoader, target: bool=True, target_nnet: torch.nn.Module=None) -> None:
         self.all_loses = []
+
+        if target:
+            nnet = target_nnet.to(device=self.device)
+        else:
+            nnet = self._nnet.to(device=self.device)
+        
+        nnet.train()
+
         # seudo code
         for batch, (X, y) in enumerate(dataloader):
             # logger.warning(f"start batch {batch+1}")
@@ -33,7 +40,8 @@ class Engine():
 
             reward, last_value_pred = y[0], y[1]
 
-            value_pred: torch.Tensor = self._nnet(X)
+
+            value_pred: torch.Tensor = nnet(X)
 
             # logger.debug(value_pred.requires_grad)
             # logger.debug(f"{value_pred.shape}, {reward.shape}, {last_value_pred.shape}")
@@ -53,8 +61,7 @@ class Engine():
 
             loss.backward()
             self.optimizer.step()
-            # logger.warning(f"end batch {batch+1}")
-        logger.warning("End training nnet.")
+
 
     
     def predict(self, state_queue: torch.Tensor) -> torch.Tensor:

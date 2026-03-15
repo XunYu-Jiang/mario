@@ -25,7 +25,7 @@ class Q_network(nn.Module):
         self.classifier = nn.Sequential(
             nn.Linear(in_features=32*64*64, out_features=100),
             nn.LeakyReLU(),
-            nn.Linear(in_features=100, out_features=12),
+            nn.Linear(in_features=100, out_features=7),
             nn.Softmax(dim=1)
         )
 
@@ -35,7 +35,7 @@ class Q_network(nn.Module):
         # logger.debug(x.shape)
         x = x.flatten(start_dim=2)
         # logger.debug(x.shape)
-        x = x.permute(dims=(0, 2, 1))
+        # x = x.permute(dims=(0, 2, 1)) #why permute?
         # logger.debug(x.shape)
         x = x.flatten(start_dim=1)
         # logger.debug(x.shape)
@@ -44,7 +44,8 @@ class Q_network(nn.Module):
 
         return x
 
-if __name__ == "__main__":
+
+def main():
     Q_model = Q_network()
     dummy_input = torch.randn((3,240,256), dtype=torch.float).unsqueeze(dim=0)
     logger.debug(dummy_input.shape)
@@ -54,3 +55,6 @@ if __name__ == "__main__":
 
     dummy_output = functional.softmax(dummy_output, dim=1)
     logger.debug(dummy_output.shape)
+
+if __name__ == "__main__":
+    main()

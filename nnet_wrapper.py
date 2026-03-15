@@ -15,10 +15,12 @@ class NNetWrapper():
 
     def train(self, 
               dataloader: torch.utils.data.DataLoader,
-              device: torch.device=torch.device("cpu")):
+              target: bool=True,
+              target_nnet: torch.nn.Module=None
+              ):
         """Wrapper of engine.train()"""
 
-        self._engine.train(dataloader=dataloader)
+        self._engine.train(dataloader=dataloader, target=target, target_nnet=target_nnet)
     
     def predict(self, state_queue: torch.Tensor) -> torch.Tensor | Tuple:
         return self._engine.predict(state_queue)

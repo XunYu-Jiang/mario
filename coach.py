@@ -46,21 +46,25 @@ def count_time(func: Callable) -> None:
         logger.info(f"Count {func.__name__}() Time: {end - start:.2f}")
         return self_play_ex, record_frames
     return wrapper
-
 class Coach():
-    def __init__(self, env: gym.Env, nnet: NNetWrapper, policy: Callable) -> None:
+    def __init__(self, env: gym.Env, nnet: NNetWrapper, target_nnet: NNetWrapper, policy: Callable) -> None:
         self._env = env
         self._env.reset()
+
         self._nnet = nnet
+        self._target_nnet = target_nnet
+
         self._optimizer = torch.optim.Adam(self._nnet.get_nnet_instance().parameters(), lr=Args.TRAIN_ARGS['lr'])
         self._policy = policy
         self.ex_replay = ExperienceReplay(batch_size=Args.TRAIN_ARGS["batch_size"], buffer_size=Args.TRAIN_ARGS["buffer_size"])
         self._replay_buffer = self.ex_replay.get_replay_buffer()
-        self.ACTION_NAMES = self._env.get_action_meanings()
+
+        # self.ACTION_NAMES = self._env.get_action_meanings()
         # self.DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.DEVICE = Args.TRAIN_ARGS["device"]
 
         logger.info(f"env action space: {self._env.action_space}")
+        logger.info(f"env action names: {self._env.get_action_meanings()}")
 
         self._log_path = os.path.join(Args.FILE_ARGS["log_dir"], Args.FILE_ARGS["log_file"])
         self.num_iters: int = Args.COACH_ARGS["num_iters"]
@@ -189,7 +193,7 @@ class Coach():
         # logger.debug(value_pred)
         # logger.debug(f"{value_pred.argmax(dim=1)}")
         # logger.debug(f"{value_pred[value_pred.argmax(dim=1)]}")
-        act_idx = policy(value_pred, eps=0.3)
+        act_idx = policy(value_pred, eps=Args.TRAIN_ARGS["episilon"])
 
         return act_idx
         # return value_pred.argmax(dim=1).item()
@@ -214,7 +218,7 @@ class Coach():
 
         #initialize data
         last_reward = 0.
-        last_value_pred = torch.zeros((1, 12))
+        last_value_pred = torch.zeros((1, 7))   #need change if action space change
         self_play_example = []
         record_frames = []
         
@@ -244,7 +248,10 @@ class Coach():
                 action_index: int = self._get_action(value_pred, policy=self._policy)
 
                 # interact with env
-                state, reward, done, _, info = self._env.step(action_index)
+                for _ in range(4):
+                    state, reward, done, _, info = self._env.step(action_index)
+                    if done:
+                        break
                 
                 # add new state to record_frames
                 record_frames.append(state.copy())
@@ -264,8 +271,8 @@ class Coach():
                 last_states_queue = states_queue
                 last_reward = reward
 
-                # if step_count > 62:
-                #     break
+                if step_count > 62:
+                    break
 
         # add last state to self_play_example with next_state_value = 0(since it is terminal state)
         self_play_example.append((last_states_queue.clone().detach(), last_reward, last_value_pred.clone().detach().squeeze(0)))
@@ -313,8 +320,11 @@ class Coach():
                 )
                 for (st, rw, vp) in self_play_example:
                     self.ex_replay.add_replay((st, rw, vp))
+                del st, rw, vp
                 del record_frames, self_play_example
                 gc.collect()
+            
+
                 
 
             ### ----------------------------end of self play-------------------------------
@@ -327,8 +337,13 @@ class Coach():
             # stq, (rw, vp) = next(iter(train_dataloader))
             # logger.debug(f"{stq.shape}, {rw.shape}, {vp.shape}")
             logger.warning("start training nnet...")
-            self._nnet.train(dataloader=train_dataloader, device=self.DEVICE)
+            
+            self._nnet.train(dataloader=train_dataloader, target=True, target_nnet=self._target_nnet.get_nnet_instance())
+
             logger.warning("Finish training nnet...")
+
+            if epoch % 5 == 0 and epoch != 0:
+                self._target_nnet.get_nnet_instance().load_state_dict(self._nnet.get_nnet_instance().state_dict())
 
             #get loss from engine.py
             batch_lose = self._nnet.get_loss()            
@@ -338,12 +353,12 @@ class Coach():
 
             mean_lose = torch.mean(batch_lose)
 
-            if (epoch % 5) == 0 and epoch != 0:
+            if ((epoch+1) % 5) == 0 and epoch != 0:
                 torch.save({
                     "epoch": epoch+1,
                     "model_state_dict": self._nnet.get_nnet_instance().state_dict(),
                     "optimizer_state_dict": self._optimizer.state_dict(),
-                }, f"{Args.FILE_ARGS['model_dir']}checkpoint_{epoch+5}.ptr")
+                }, f"{Args.FILE_ARGS['model_dir']}checkpoint_{epoch+1}.ptr")
             
             writer = SummaryWriter(log_dir=os.path.join(Args.FILE_ARGS["log_dir"], "losses"))
             writer.add_scalars(main_tag="Losses",
@@ -358,7 +373,7 @@ class Coach():
 
 def test_process_state():
     env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='rgb_array')
-    env = JoypadSpace(env, COMPLEX_MOVEMENT)
+    env = JoypadSpace(env, SIMPLE_MOVEMENT)
     coach = Coach(env=env, nnet=NNetWrapper(AdvActorCriticNNet()), policy=Policy.episilon_greedy)
 
     state, _ = env.reset()
@@ -428,7 +443,7 @@ def test_multiprocess():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='human')
-    env = JoypadSpace(env, COMPLEX_MOVEMENT)
+    env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
     nnet = Q_network()
     optimizer = torch.optim.Adam(nnet.parameters(), lr=Args.TRAIN_ARGS["lr"])
@@ -441,11 +456,26 @@ def test_multiprocess():
         result = pool.map(coach._self_play, ())
     logger.debug(result)
 
+def test_delete():
+    a = [1, 2, 3]
+    b = [4, 5, 6]
+    c = []
+    c.append(a)
+    c.append(b)
+    for x in a:
+        c.append(x)
+    del x
+    logger.debug(x)
+    del a, b
+    logger.debug(c)
+
+
+
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='human')
-    env = JoypadSpace(env, COMPLEX_MOVEMENT)
+    env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
     nnet = Q_network()
     optimizer = torch.optim.Adam(nnet.parameters(), lr=Args.TRAIN_ARGS["lr"])
@@ -460,9 +490,9 @@ def main():
 if __name__ == "__main__":
     # test_process_state()
     # test_multiprocess()
-    
+    test_delete()
         
-    main()
+    # main()
 
 
     

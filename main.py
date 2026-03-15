@@ -16,6 +16,7 @@ from q_nnet import Q_network
 from args import Args
 
 import torch
+import copy
 
 import contextlib
 import inspect
@@ -46,13 +47,16 @@ def main():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='human')
-        env = JoypadSpace(env, COMPLEX_MOVEMENT)
+        env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
         nnet = Q_network()
+        target_nnet = copy.deepcopy(nnet)
+
         optimizer = torch.optim.Adam(nnet.parameters(), lr=Args.TRAIN_ARGS["lr"])
         nnet_wrap = NNetWrapper(nnet=nnet, optimizer=optimizer, device=device)
+        target_nnet_wrap = NNetWrapper(nnet=target_nnet, optimizer=optimizer, device=device)
         
-        coach = Coach(env=env, nnet=nnet_wrap, policy=Algorithom.Policy.episilon_greedy)
+        coach = Coach(env=env, nnet=nnet_wrap, target_nnet=target_nnet_wrap, policy=Algorithom.Policy.episilon_greedy)
 
         logger.warning(f"Using device: {device}...")
         coach.reset_env()
