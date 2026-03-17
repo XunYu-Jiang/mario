@@ -15,17 +15,23 @@ class NNetWrapper():
 
     def train(self, 
               dataloader: torch.utils.data.DataLoader,
-              target: bool=True,
+              nnet: torch.nn.Module,
               target_nnet: torch.nn.Module=None
               ):
         """Wrapper of engine.train()"""
 
-        self._engine.train(dataloader=dataloader, target=target, target_nnet=target_nnet)
+        self._engine.train(dataloader=dataloader,nnet=nnet, target_nnet=target_nnet)
     
     def predict(self, state_queue: torch.Tensor) -> torch.Tensor | Tuple:
         return self._engine.predict(state_queue)
         
+    def freeze(self):
+        for param in self._nnet.parameters():
+            param.requires_grad = False
     
+    def eval(self):
+        self._nnet.eval()
+
     def save_checkpoint(self, folder, filename):
         ...
 

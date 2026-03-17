@@ -49,8 +49,11 @@ def main():
         env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='human')
         env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
-        nnet = Q_network()
-        target_nnet = copy.deepcopy(nnet)
+        if Args.COACH_ARGS["load_checkpoint"]:
+            raise NotImplementedError
+        else:
+            nnet = Q_network()
+            target_nnet = copy.deepcopy(nnet)
 
         optimizer = torch.optim.Adam(nnet.parameters(), lr=Args.TRAIN_ARGS["lr"])
         nnet_wrap = NNetWrapper(nnet=nnet, optimizer=optimizer, device=device)

@@ -53,6 +53,7 @@ class Coach():
 
         self._nnet = nnet
         self._target_nnet = target_nnet
+        self._target_nnet.freeze()  #freeze target nnet parameters
 
         self .episilon = Args.TRAIN_ARGS["episilon"]
 
@@ -220,7 +221,7 @@ class Coach():
 
         #initialize data
         last_reward = 0.
-        last_value_pred = torch.zeros((1, 7))   #need change if action space change
+        # last_value_pred = torch.zeros((1, 7))   #need change if action space change
         self_play_example = []
         record_frames = []
         
@@ -240,11 +241,9 @@ class Coach():
 
         while not done:
             step_count += 1
-            self._nnet.get_nnet_instance().eval()
             # prob_pred: torch.Tensor = torch.tensor([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
             with torch.inference_mode():
-
-                # states_queue = states_queue.to(dtype=torch.float32, device=self.DEVICE)
+                self._nnet.eval()
 
                 value_pred = self._nnet.predict(states_queue.unsqueeze(0).to(dtype=torch.float32, device=self.DEVICE))
                 action_index: int = self._get_action(value_pred, policy=self._policy)
@@ -267,9 +266,8 @@ class Coach():
                 # with open(self._log_path, "a") as f:
                 #     print(f"step {step_count} at {time.strftime('%Y-%m-%d %H:%M:%S')}:\n    reward: {last_reward},\n    last_value_pred: {last_value_pred},\n    value_pred: {value_pred}\n    info: {info}", file=f)
 
-                self_play_example.append((last_states_queue.clone().detach(), last_reward, last_value_pred.clone().detach().squeeze(0)))  #(Tensor, float, Tensor)
+                self_play_example.append((last_states_queue.clone().detach(), last_reward, states_queue.clone().detach()))  #(Tensor, float, Tensor)
                 
-                last_value_pred = value_pred
                 last_states_queue = states_queue
                 last_reward = reward
 
@@ -277,7 +275,7 @@ class Coach():
                     break
 
         # add last state to self_play_example with next_state_value = 0(since it is terminal state)
-        self_play_example.append((last_states_queue.clone().detach(), last_reward, last_value_pred.clone().detach().squeeze(0)))
+        self_play_example.append((last_states_queue.clone().detach(), last_reward, states_queue.clone().detach()))
         # logger.debug(f"game length: {len(self_play_example)}")
 
         return self_play_example, record_frames
@@ -296,6 +294,8 @@ class Coach():
         bar_fmt = "{desc}: |{bar}| {n_fmt}/{total_fmt} {remaining},{rate_fmt}{postfix}"
         
         logger.debug(f"Is Multiprocess: {Args.COACH_ARGS['is_multiprocess']}")
+
+        writer = SummaryWriter(log_dir=os.path.join(Args.FILE_ARGS["log_dir"], "losses"))
 
         # for every iteration
         for epoch in trange(self.num_iters,  desc="Epoch", colour="blue", bar_format=bar_fmt):
@@ -320,6 +320,7 @@ class Coach():
                     # step_starting_index=step_starting_index,
                     episode_index=episode + 1
                 )
+
                 for (st, rw, vp) in self_play_example:
                     self.ex_replay.add_replay((st, rw, vp))
                 del st, rw, vp
@@ -340,7 +341,7 @@ class Coach():
             # logger.debug(f"{stq.shape}, {rw.shape}, {vp.shape}")
             logger.warning("start training nnet...")
             
-            self._nnet.train(dataloader=train_dataloader, target=True, target_nnet=self._target_nnet.get_nnet_instance())
+            self._nnet.train(dataloader=train_dataloader, nnet=self._nnet.get_nnet_instance(), target_nnet=self._target_nnet.get_nnet_instance())
 
             logger.warning("Finish training nnet...")
 
@@ -348,12 +349,10 @@ class Coach():
                 self._target_nnet.get_nnet_instance().load_state_dict(self._nnet.get_nnet_instance().state_dict())
 
             #get loss from engine.py
-            batch_lose = self._nnet.get_loss()            
-            batch_lose = torch.tensor(batch_lose)
-
+            total_lose = self._nnet.get_loss()            
+            total_lose /= len(train_dataloader) # divide to match mean_lose
             # logger.debug(batch_lose.shape)
 
-            mean_lose = torch.mean(batch_lose)
 
             if ((epoch+1) % 5) == 0 and epoch != 0:
                 torch.save({
@@ -361,17 +360,20 @@ class Coach():
                     "model_state_dict": self._nnet.get_nnet_instance().state_dict(),
                     "optimizer_state_dict": self._optimizer.state_dict(),
                 }, f"{Args.FILE_ARGS['model_dir']}checkpoint_{epoch+1}.ptr")
-            
-            writer = SummaryWriter(log_dir=os.path.join(Args.FILE_ARGS["log_dir"], "losses"))
-            writer.add_scalars(main_tag="Losses",
-                               tag_scalar_dict={"mean_lose": np.array(mean_lose)},
-                               global_step=epoch)
-            
-            if (epoch % 10) == 0 and epoch != 0:
+                
+                # episilon manipulation
                 self.episilon = self.episilon * 0.99
                 if self.episilon < 0.3:
                     self.episilon = 0.3
-            logger.debug(f"episilon: {self.episilon}")
+            logger.debug(f"episilon: {self.episilon:.3f}")
+            
+            # track loss in tensorboard
+            writer.add_scalars(main_tag="Losses",
+                               tag_scalar_dict={"mean_lose": np.array(total_lose)},
+                               global_step=epoch)
+            writer.close()
+
+
 
     
                     

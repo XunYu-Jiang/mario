@@ -16,15 +16,17 @@ class Engine():
         self.optimizer = optimizer
         self.loss_fn = torch.nn.MSELoss()
         self.device = device
-        self.all_loses = []
+        self.total_loses = 0.
     
-    def train(self, dataloader: torch.utils.data.DataLoader, target: bool=True, target_nnet: torch.nn.Module=None) -> None:
-        self.all_loses = []
+    def train(self, dataloader: torch.utils.data.DataLoader, nnet: torch.nn.Module=None, target_nnet: torch.nn.Module=None) -> None:
+        self.total_loses = 0.
 
-        if target:
-            nnet = target_nnet.to(device=self.device)
-        else:
-            nnet = self._nnet.to(device=self.device)
+        # if target_nnet is not None:
+        #     nnet = target_nnet.to(device=self.device)
+        # else:
+        #     nnet = self._nnet.to(device=self.device)
+        nnet = nnet.to(device=Args.TRAIN_ARGS["device"])
+        target_nnet = target_nnet.to(device=Args.TRAIN_ARGS["device"])
         
         nnet.train()
 
@@ -35,13 +37,11 @@ class Engine():
             self.optimizer.zero_grad()
 
             X = X.to(dtype=torch.float32, device=self.device)
-            y[0] = y[0].to(dtype=torch.float32, device=self.device)
-            y[1] = y[1].to(dtype=torch.float32, device=self.device)
-
-            reward, last_value_pred = y[0], y[1]
+            reward, next_state = y[0].to(dtype=torch.float32, device=self.device), y[1].to(dtype=torch.float32, device=self.device)
 
 
             value_pred: torch.Tensor = nnet(X)
+            next_value_pred: torch.Tensor = target_nnet(next_state)
 
             # logger.debug(value_pred.requires_grad)
             # logger.debug(f"{value_pred.shape}, {reward.shape}, {last_value_pred.shape}")
@@ -50,17 +50,19 @@ class Engine():
 
             # logger.debug(f"{value_pred.shape}, {reward.shape}, {last_value_pred.shape}")
 
-            target = torch.add(reward, Args.TRAIN_ARGS['q_learning_discount'] * value_pred)
+            target = torch.add(reward, Args.TRAIN_ARGS['q_learning_discount'] * next_value_pred)
 
-            loss: torch.Tensor = self.loss_fn(last_value_pred, target)
+            loss: torch.Tensor = self.loss_fn(value_pred, target)
             
             # record all loses for tracking experiment
-            tmp_loss = loss.clone().detach()
-            tmp_loss = tmp_loss.sum()
-            self.all_loses.append(tmp_loss.to(device="cpu"))
+            self.total_loses += loss.item()
 
             loss.backward()
             self.optimizer.step()
+
+            # for name, parameter in nnet.named_parameters():
+            #     if parameter.requires_grad:
+            #         print(f"Parameter: {name}, Value snippet: {parameter.data.cpu().numpy().flatten()[:1]}")
 
 
     
@@ -68,7 +70,7 @@ class Engine():
         return self._nnet(state_queue)
 
     def get_loss(self):
-        return self.all_loses
+        return self.total_loses
 
 def main():
     a = torch.randint(0, 10, size=(3,2))

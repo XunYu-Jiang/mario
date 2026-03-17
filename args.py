@@ -4,7 +4,7 @@ class Args:
         "num_iters": 6,   #100
         "num_episodes": 6, #50
         "is_multiprocess": False,   
-        'tempThreshold': 12 #12 # 前 n 步 不一定挑最好的走步
+        "load_checkpoint": False
     }
 
     NN_ARGS: dict = {

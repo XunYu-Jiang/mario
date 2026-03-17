@@ -16,20 +16,21 @@ class CustomDataSet(torch.utils.data.Dataset):
         # self.replay_buffer = replay_buffer
         self.state_queue = []
         self.reward = []
-        self.value_pred = []
+        self.next_state_queue = []
         
         
 
-        for st, rw, vp in replay_buffer:
-            rw = torch.tensor(rw, dtype=torch.float32, device=Args.TRAIN_ARGS["device"]).unsqueeze(0)
+        for st, rw, nst in replay_buffer:
             st = st.to(dtype=torch.float32, device=Args.TRAIN_ARGS["device"])
-            vp = vp.to(dtype=torch.float32, device=Args.TRAIN_ARGS["device"]).squeeze(0)
+            rw = torch.tensor(rw, dtype=torch.float32, device=Args.TRAIN_ARGS["device"]).unsqueeze(0)
+            nst = nst.to(dtype=torch.float32, device=Args.TRAIN_ARGS["device"]).squeeze(0)
 
             self.state_queue.append(st)
             self.reward.append(rw)
-            self.value_pred.append(vp)
+            self.next_state_queue.append(nst)
 
-                # logger.debug(f"{st.shape}, {rw.shape}, {vp.shape}")
+            # logger.debug(f"{st.shape}, {rw.shape}, {vp.shape}")
+        del st, rw, nst
         logger.warning("CustomDataSet init done")
         # self.reward_stack = torch.tensor(self.reward, dtype=torch.float32, device=Args.TRAIN_ARGS["device"])
         # logger.debug(self.reward_stack.shape)
@@ -47,7 +48,7 @@ class CustomDataSet(torch.utils.data.Dataset):
         return len(self.reward)
 
     def __getitem__(self, idx):
-        return self.state_queue[idx], (self.reward[idx], self.value_pred[idx])
+        return self.state_queue[idx], (self.reward[idx], self.next_state_queue[idx])
 
 class ExperienceReplay:
     def __init__(self, batch_size=32, buffer_size=1000) -> None:
@@ -115,6 +116,20 @@ def test_dataset():
     f = torch.tensor(e)
     logger.debug(f)
 
+def test_del():
+    a = torch.tensor([1, 2, 3])
+    b = torch.tensor([4, 5, 6])
+    c = torch.stack((a, b), dim=0)
+    d = [a, b]
+    logger.debug(c)
+    logger.debug(d)
+    for x in d:
+        pass
+    del a, b, x
+    logger.debug(x)
+    logger.debug(c)
+    logger.debug(d)
+    logger.debug(f"{a}, {b}")
 def main():
     dq = deque(maxlen=100)
     logger.debug(dq)
@@ -147,5 +162,6 @@ def main():
     logger.debug((a, b))
 
 if __name__ == "__main__":
-    test_dataset()
+    # test_dataset()
+    test_del()
 
