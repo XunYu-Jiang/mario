@@ -23,6 +23,7 @@ from pathlib import Path
 import gc
 
 # testing
+import matplotlib.pyplot as plt
 from nnet_wrapper import NNetWrapper
 from q_nnet import Q_network
 from nes_py.wrappers import JoypadSpace
@@ -125,7 +126,10 @@ class Coach():
             new_state = torch.from_numpy(gray_state).unsqueeze(dim=0)
             
             new_state = F.resize(new_state, (64, 64))
-
+        # im_to_show = new_state.permute(1, 2, 0).cpu().detach().numpy()
+        # plt.imshow(im_to_show)
+        # plt.axis('off')
+        # plt.show()
         new_state = new_state.squeeze(dim=0)
         
         # new_state and gray_state share the same memory, no need to keep two pointer
