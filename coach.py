@@ -23,12 +23,12 @@ from pathlib import Path
 import gc
 
 # testing
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from nnet_wrapper import NNetWrapper
 from q_nnet import Q_network
 from nes_py.wrappers import JoypadSpace
 import gym_super_mario_bros
-from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, COMPLEX_MOVEMENT
+from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, COMPLEX_MOVEMENT, RIGHT_ONLY
 import gymnasium as gym
 from gym.utils.save_video import save_video
 
@@ -126,10 +126,7 @@ class Coach():
             new_state = torch.from_numpy(gray_state).unsqueeze(dim=0)
             
             new_state = F.resize(new_state, (64, 64))
-        # im_to_show = new_state.permute(1, 2, 0).cpu().detach().numpy()
-        # plt.imshow(im_to_show)
-        # plt.axis('off')
-        # plt.show()
+
         new_state = new_state.squeeze(dim=0)
         
         # new_state and gray_state share the same memory, no need to keep two pointer
@@ -251,7 +248,6 @@ class Coach():
 
                 value_pred = self._nnet.predict(states_queue.unsqueeze(0).to(dtype=torch.float32, device=self.DEVICE))
                 action_index: int = self._get_action(value_pred, policy=self._policy)
-
                 # interact with env
                 for _ in range(4):
                     state, reward, done, _, info = self._env.step(action_index)
@@ -375,7 +371,7 @@ class Coach():
             writer.add_scalars(main_tag="Losses",
                                tag_scalar_dict={"mean_lose": np.array(total_lose)},
                                global_step=epoch)
-            writer.close()
+        writer.close()
 
 
 
@@ -483,6 +479,22 @@ def test_delete():
     del a, b
     logger.debug(c)
 
+def test_add_graph():
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    nnet = Q_network()
+    optimizer = torch.optim.Adam(nnet.parameters(), lr=Args.TRAIN_ARGS["lr"])
+    nnet_wrap = NNetWrapper(nnet=nnet, optimizer=optimizer, device=device)
+
+    writer = SummaryWriter(log_dir="./logs/test_add_graph")
+
+    dummy_input = torch.randn((1, 3, 64, 64), dtype=torch.float).to(device)
+    logger.debug(dummy_input.shape)
+    nnet_instance = nnet_wrap.get_nnet_instance()
+    # nnet_instance(dummy_input)
+    writer.add_graph(nnet_instance, dummy_input)
+    writer.close()
+
 
 
 def main():
@@ -500,11 +512,13 @@ def main():
     coach.reset_env()
     coach.learn()
     # coach._self_play()
+    dummy_input = torch.randn((3,240,256), dtype=torch.float).unsqueeze(dim=0)
 
 if __name__ == "__main__":
     # test_process_state()
     # test_multiprocess()
-    test_delete()
+    # test_delete()
+    test_add_graph()
         
     # main()
 

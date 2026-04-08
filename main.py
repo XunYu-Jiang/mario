@@ -5,7 +5,7 @@ logger = MyLogging.get_root_logger()
 # import mario libs
 from nes_py.wrappers import JoypadSpace
 import gym_super_mario_bros
-from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, COMPLEX_MOVEMENT
+from gym_super_mario_bros.actions import SIMPLE_MOVEMENT, COMPLEX_MOVEMENT, RIGHT_ONLY
 
 # depandencies
 from coach import Coach
@@ -47,8 +47,8 @@ def main():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0', apply_api_compatibility=True, render_mode='human')
-        env = JoypadSpace(env, SIMPLE_MOVEMENT)
-
+        env = JoypadSpace(env, RIGHT_ONLY)
+        # logger.debug(env.action_space)
         if Args.COACH_ARGS["load_checkpoint"]:
             raise NotImplementedError
         else:
@@ -56,8 +56,10 @@ def main():
             target_nnet = copy.deepcopy(nnet)
 
         optimizer = torch.optim.Adam(nnet.parameters(), lr=Args.TRAIN_ARGS["lr"])
+        optimizer_target = torch.optim.Adam(nnet.parameters(), lr=Args.TRAIN_ARGS["lr"])
+
         nnet_wrap = NNetWrapper(nnet=nnet, optimizer=optimizer, device=device)
-        target_nnet_wrap = NNetWrapper(nnet=target_nnet, optimizer=optimizer, device=device)
+        target_nnet_wrap = NNetWrapper(nnet=target_nnet, optimizer=optimizer_target, device=device)
         
         coach = Coach(env=env, nnet=nnet_wrap, target_nnet=target_nnet_wrap, policy=Algorithom.Policy.episilon_greedy)
 

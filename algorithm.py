@@ -62,7 +62,7 @@ class Algorithom:
             # using epsilon-greedy
             if eps != 0:
                 if torch.rand(1) < eps:
-                    return torch.randint(low=0, high=7, size=(1,)).item()   #need change if action space change
+                    return torch.randint(low=0, high=5, size=(1,)).item()   #need change if action space change
                 else:
                     return value_pred.argmax(dim=1).item()
             
