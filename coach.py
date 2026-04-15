@@ -48,7 +48,7 @@ def count_time(func: Callable) -> None:
         return self_play_ex, record_frames
     return wrapper
 class Coach():
-    def __init__(self, env: gym.Env, nnet: NNetWrapper, target_nnet: NNetWrapper, policy: Callable) -> None:
+    def __init__(self, env: gym.Env, nnet: NNetWrapper, target_nnet: NNetWrapper, optimizer: torch.optim.Optimizer, policy: Callable) -> None:
         self._env = env
         self._env.reset()
 
@@ -58,7 +58,7 @@ class Coach():
 
         self .episilon = Args.TRAIN_ARGS["episilon"]
 
-        self._optimizer = torch.optim.Adam(self._nnet.get_nnet_instance().parameters(), lr=Args.TRAIN_ARGS['lr'])
+        self._optimizer = optimizer
         self._policy = policy
         self.ex_replay = ExperienceReplay(batch_size=Args.TRAIN_ARGS["batch_size"], buffer_size=Args.TRAIN_ARGS["buffer_size"])
         self._replay_buffer = self.ex_replay.get_replay_buffer()
@@ -345,26 +345,30 @@ class Coach():
 
             logger.warning("Finish training nnet...")
 
-            if epoch % 5 == 0 and epoch != 0:
+            if epoch % 20 == 0 and epoch != 0:
                 self._target_nnet.get_nnet_instance().load_state_dict(self._nnet.get_nnet_instance().state_dict())
+                self._target_nnet.freeze()
+
 
             #get loss from engine.py
             total_lose = self._nnet.get_loss()            
             total_lose /= len(train_dataloader) # divide to match mean_lose
+            logger.debug(f"mean_lose: {total_lose:.3f}")
             # logger.debug(batch_lose.shape)
 
 
-            if ((epoch+1) % 5) == 0 and epoch != 0:
+            if ((epoch+1) % 100) == 0 and epoch != 0:
                 torch.save({
                     "epoch": epoch+1,
                     "model_state_dict": self._nnet.get_nnet_instance().state_dict(),
                     "optimizer_state_dict": self._optimizer.state_dict(),
                 }, f"{Args.FILE_ARGS['model_dir']}checkpoint_{epoch+1}.ptr")
                 
+            if ((epoch+1) % 10) == 0 and epoch != 0:
                 # episilon manipulation
                 self.episilon = self.episilon * 0.99
-                if self.episilon < 0.3:
-                    self.episilon = 0.3
+                if self.episilon < 0.1:
+                    self.episilon = 0.1
             logger.debug(f"episilon: {self.episilon:.3f}")
             
             # track loss in tensorboard

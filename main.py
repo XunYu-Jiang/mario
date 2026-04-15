@@ -61,7 +61,7 @@ def main():
         nnet_wrap = NNetWrapper(nnet=nnet, optimizer=optimizer, device=device)
         target_nnet_wrap = NNetWrapper(nnet=target_nnet, optimizer=optimizer_target, device=device)
         
-        coach = Coach(env=env, nnet=nnet_wrap, target_nnet=target_nnet_wrap, policy=Algorithom.Policy.episilon_greedy)
+        coach = Coach(env=env, nnet=nnet_wrap, target_nnet=target_nnet_wrap, optimizer=optimizer, policy=Algorithom.Policy.episilon_greedy)
 
         logger.warning(f"Using device: {device}...")
         coach.reset_env()
